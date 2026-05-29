@@ -1,0 +1,13 @@
+{
+  "name": "world-cup-manager-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Clean MVP scaffold for an AI-assisted World Cup national team management game.",
+  "scripts": {
+    "dev:client": "npm --prefix client run dev",
+    "dev:server": "npm --prefix server run dev",
+    "build:client": "npm --prefix client run build",
+    "start:server": "npm --prefix server start",
+    "seed": "npm --prefix server run seed"
+  }
+}
