@@ -53,7 +53,23 @@ function withTeamNames(fixture) {
     ...fixture,
     homeTeam: home?.name || fixture.homeTeamCode,
     awayTeam: away?.name || fixture.awayTeamCode,
+    homeFlag: home?.flag || null,
+    awayFlag: away?.flag || null,
   };
+}
+
+function toTeamRef(team) {
+  if (!team) return null;
+  return {
+    code: team.code,
+    name: team.name,
+    flag: team.flag || null,
+  };
+}
+
+function getMatchTeamRefs(match) {
+  if (!match?.teams) return [];
+  return [toTeamRef(match.teams.home), toTeamRef(match.teams.away)].filter(Boolean);
 }
 
 function getResultWinner(match) {
@@ -182,6 +198,7 @@ function buildTournamentCompletionNews(tournamentAfter, awards, selectedTeamCode
       type: "champion",
       headline: `${podium.champion} crowned World Cup champions`,
       summary: `${podium.champion} defeated ${podium.runnerUp} ${finalScore} in the Final. ${podium.thirdPlace} claimed third place ahead of ${podium.fourthPlace}.`,
+      teams: [toTeamRef(tournamentAfter.knockout?.final?.[0]?.knockout?.winnerTeam), toTeamRef(tournamentAfter.knockout?.final?.[0]?.knockout?.loserTeam)].filter(Boolean),
       createdAt,
     },
     {
@@ -189,6 +206,7 @@ function buildTournamentCompletionNews(tournamentAfter, awards, selectedTeamCode
       type: "manager-tournament-status",
       headline: `${selectedTeam?.name || "Manager team"} finish: ${selectedStatus}`,
       summary: `${selectedTeam?.name || "The manager's team"} completed the 2026-style tournament with a final status of ${selectedStatus}.`,
+      teams: [toTeamRef(selectedTeam)].filter(Boolean),
       createdAt,
     },
     {
@@ -252,6 +270,7 @@ function buildMatchdayNews(matches, managerMatch, managerReport, tournamentAfter
       summary: `${managerReport.shortSummary} Man of the Match: ${formatManOfTheMatch(managerMatch)}.`,
       manOfTheMatch: managerMatch.manOfTheMatch,
       matchId: managerMatch.fixtureId,
+      teams: getMatchTeamRefs(managerMatch),
       createdAt,
     },
   ];
@@ -279,6 +298,7 @@ function buildMatchdayNews(matches, managerMatch, managerReport, tournamentAfter
       summary: `${upsets[0].winnerTeam.name} overcame a ${upsets[0].upsetGap}-point overall gap to reshape the qualification race. Man of the Match: ${formatManOfTheMatch(upsets[0].match)}.`,
       manOfTheMatch: upsets[0].match.manOfTheMatch,
       matchId: upsets[0].match.fixtureId,
+      teams: [toTeamRef(upsets[0].winnerTeam), toTeamRef(upsets[0].loserTeam)].filter(Boolean),
       createdAt,
     });
   }
@@ -294,6 +314,7 @@ function buildMatchdayNews(matches, managerMatch, managerReport, tournamentAfter
       summary: `The ${highScoringMatch.score.home}-${highScoringMatch.score.away} result was the highest-scoring match of global matchday ${highScoringMatch.globalMatchday}. Man of the Match: ${formatManOfTheMatch(highScoringMatch)}.`,
       manOfTheMatch: highScoringMatch.manOfTheMatch,
       matchId: highScoringMatch.fixtureId,
+      teams: getMatchTeamRefs(highScoringMatch),
       createdAt,
     });
   }
@@ -317,6 +338,7 @@ function buildMatchdayNews(matches, managerMatch, managerReport, tournamentAfter
         type: "manager-qualification",
         headline: `${selectedTeam.name}: ${selectedStatus.qualificationStatus}`,
         summary: `${selectedTeam.name} finished Group ${selectedStatus.group} in position ${selectedStatus.groupPosition}.`,
+        teams: [toTeamRef(selectedTeam)].filter(Boolean),
         createdAt,
       });
     }
@@ -337,6 +359,7 @@ function buildKnockoutNews(matches, managerMatch, featuredReport, tournamentAfte
       summary: `${featuredReport.shortSummary} Man of the Match: ${formatManOfTheMatch(managerMatch)}.`,
       manOfTheMatch: managerMatch.manOfTheMatch,
       matchId: managerMatch.fixtureId,
+      teams: getMatchTeamRefs(managerMatch),
       createdAt,
     });
   }
@@ -364,6 +387,7 @@ function buildKnockoutNews(matches, managerMatch, featuredReport, tournamentAfte
       summary: `${upsets[0].winnerTeam.name} overcame a ${upsets[0].upsetGap}-point overall gap to stay alive in the tournament. Man of the Match: ${formatManOfTheMatch(upsets[0].match)}.`,
       manOfTheMatch: upsets[0].match.manOfTheMatch,
       matchId: upsets[0].match.fixtureId,
+      teams: [toTeamRef(upsets[0].winnerTeam), toTeamRef(upsets[0].loserTeam)].filter(Boolean),
       createdAt,
     });
   }
@@ -379,6 +403,7 @@ function buildKnockoutNews(matches, managerMatch, featuredReport, tournamentAfte
       summary: `The ${highScoringMatch.score.home}-${highScoringMatch.score.away} scoreline was the highest-scoring tie of the round. Man of the Match: ${formatManOfTheMatch(highScoringMatch)}.`,
       manOfTheMatch: highScoringMatch.manOfTheMatch,
       matchId: highScoringMatch.fixtureId,
+      teams: getMatchTeamRefs(highScoringMatch),
       createdAt,
     });
   }
@@ -403,6 +428,7 @@ function buildKnockoutNews(matches, managerMatch, featuredReport, tournamentAfte
             : `${winner.name} advance, while ${loser.name} exit the simplified knockout bracket. Man of the Match: ${formatManOfTheMatch(featuredMatch)}.`,
       manOfTheMatch: featuredMatch.manOfTheMatch,
       matchId: featuredMatch.fixtureId,
+      teams: getMatchTeamRefs(featuredMatch),
       createdAt,
     });
 
@@ -412,6 +438,7 @@ function buildKnockoutNews(matches, managerMatch, featuredReport, tournamentAfte
         type: "manager-status",
         headline: `${selectedTeam.name}: ${selectedStatus}`,
         summary: `${tournamentAfter.progressText}`,
+        teams: [toTeamRef(selectedTeam)].filter(Boolean),
         createdAt,
       });
     }
@@ -429,7 +456,15 @@ function buildDashboardPayload(state) {
     return {
       needsTeamSelection: true,
       selectedTeam: null,
-      teams: teams.map(({ code, name, overall, group }) => ({ code, name, overall, group })),
+      teams: teams.map(({ code, name, overall, group, region, confederation, flag }) => ({
+        code,
+        name,
+        overall,
+        group,
+        region,
+        confederation,
+        flag,
+      })),
       managerCareer: { ...baseCareer, currentTournamentFinish: "Awaiting team selection" },
       tournamentHistory,
     };
@@ -459,6 +494,8 @@ function buildDashboardPayload(state) {
       morale: selectedTeam.morale,
       form: selectedTeam.form,
       style: selectedTeam.style,
+      flag: selectedTeam.flag,
+      confederation: selectedTeam.confederation || selectedTeam.region,
       groupPosition: tournament.selectedTeamStatus?.groupPosition || null,
       qualificationStatus: tournament.selectedTeamStatus?.qualificationStatus || "Awaiting group matches",
     },
@@ -467,6 +504,7 @@ function buildDashboardPayload(state) {
       ? {
           code: opponent.code,
           name: opponent.name,
+          flag: opponent.flag,
           overall: opponent.overall,
         }
       : null,
@@ -568,7 +606,7 @@ export async function getSquad(req, res) {
     return res.status(400).json({ message: "Select a national team first." });
   }
 
-  return res.json({ team: team.name, players: team.players });
+  return res.json({ team: team.name, flag: team.flag, players: team.players });
 }
 
 export async function getTactics(req, res) {

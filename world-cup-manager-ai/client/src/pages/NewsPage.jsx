@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Newspaper } from "lucide-react";
+import Flag from "../components/Flag.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import Panel from "../components/Panel.jsx";
@@ -56,6 +57,16 @@ export default function NewsPage() {
                   <p className="mt-3 rounded-md border border-pitch-300/15 bg-pitch-400/10 px-3 py-2 text-sm font-semibold text-pitch-100">
                     Man of the Match: {item.manOfTheMatch.name} ({item.manOfTheMatch.rating})
                   </p>
+                ) : null}
+                {item.teams?.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {item.teams.map((team) => (
+                      <span key={`${item.id}-${team.code}`} className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-xs font-semibold text-slate-200">
+                        <Flag src={team.flag} alt={`${team.name} flag`} size="xs" />
+                        {team.name}
+                      </span>
+                    ))}
+                  </div>
                 ) : null}
                 <p className="mt-3 text-xs uppercase tracking-[0.16em] text-slate-500">
                   {new Date(item.createdAt).toLocaleString()}

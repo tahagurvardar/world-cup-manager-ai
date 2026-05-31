@@ -90,6 +90,22 @@ function toHistoryAward(award) {
   };
 }
 
+function getWinnerFlag(match) {
+  if (!match) return null;
+  if (match.knockout?.winnerTeam?.flag) return match.knockout.winnerTeam.flag;
+  if (match.winnerTeamCode === match.homeTeamCode) return match.homeFlag;
+  if (match.winnerTeamCode === match.awayTeamCode) return match.awayFlag;
+  return null;
+}
+
+function getLoserFlag(match) {
+  if (!match) return null;
+  if (match.knockout?.loserTeam?.flag) return match.knockout.loserTeam.flag;
+  if (match.loserTeamCode === match.homeTeamCode) return match.homeFlag;
+  if (match.loserTeamCode === match.awayTeamCode) return match.awayFlag;
+  return null;
+}
+
 export function normalizeManagerCareer(career = {}) {
   const gamesManaged = toNumber(career.gamesManaged);
   const wins = toNumber(career.wins);
@@ -159,17 +175,24 @@ export function buildTournamentHistoryRecord({ tournament, selectedTeam, awards,
   const podium = awards?.podium || {};
   const individual = awards?.individual || {};
   const selectedTeamFinish = getSelectedTeamFinish(tournament, selectedTeam?.code);
+  const finalMatch = tournament?.knockout?.final?.[0];
+  const thirdPlaceMatch = tournament?.knockout?.thirdPlace?.[0];
 
   return {
     id: `${completedAt.getTime()}-${selectedTeam?.code || "manager"}`,
     edition: 2026,
     year: 2026,
     champion: podium.champion || null,
+    championFlag: getWinnerFlag(finalMatch),
     runnerUp: podium.runnerUp || null,
+    runnerUpFlag: getLoserFlag(finalMatch),
     thirdPlace: podium.thirdPlace || null,
+    thirdPlaceFlag: getWinnerFlag(thirdPlaceMatch),
     fourthPlace: podium.fourthPlace || null,
+    fourthPlaceFlag: getLoserFlag(thirdPlaceMatch),
     selectedTeam: selectedTeam?.name || null,
     selectedTeamCode: selectedTeam?.code || null,
+    selectedTeamFlag: selectedTeam?.flag || null,
     selectedTeamFinish,
     topScorer: toHistoryAward(individual.goldenBoot),
     bestPlayer: toHistoryAward(individual.bestPlayer),

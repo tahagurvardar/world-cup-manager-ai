@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle2, Shield } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
+import Flag from "../components/Flag.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import { sampleTeams } from "../data/sampleData";
@@ -96,13 +97,11 @@ export default function SelectTeamPage() {
                     }`}
                   >
                     <div className="flex items-start justify-between">
-                      <span className="grid h-10 w-10 place-items-center rounded-md bg-white/10 text-pitch-200">
-                        <Shield size={20} />
-                      </span>
+                      <Flag src={team.flag} alt={`${team.name} flag`} size="lg" />
                       <span className="rounded-md bg-white/10 px-2 py-1 text-xs text-slate-300">OVR {team.overall}</span>
                     </div>
                     <p className="mt-4 text-lg font-semibold text-white">{team.name}</p>
-                    <p className="mt-1 text-sm text-slate-400">{team.region}</p>
+                    <p className="mt-1 text-sm text-slate-400">{team.confederation || team.region}</p>
                     <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-slate-400">
                       <span>Morale {team.morale}</span>
                       <span>Form {team.form}</span>

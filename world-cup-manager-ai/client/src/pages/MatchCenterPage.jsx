@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Activity, BadgeAlert, Crosshair, Play, Star, Timer, Trophy } from "lucide-react";
+import Flag from "../components/Flag.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import Panel from "../components/Panel.jsx";
@@ -95,9 +96,9 @@ export default function MatchCenterPage() {
                 {dashboard.nextMatch.group ? `Group ${dashboard.nextMatch.group}` : dashboard.nextMatch.id}
               </p>
               <div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-                <p className="text-xl font-semibold text-white">{dashboard.nextMatch.homeTeam}</p>
+                <FixtureTeam name={dashboard.nextMatch.homeTeam} flag={dashboard.nextMatch.homeFlag} align="right" />
                 <span className="rounded-md bg-white/10 px-3 py-2 text-sm text-slate-300">vs</span>
-                <p className="text-xl font-semibold text-white">{dashboard.nextMatch.awayTeam}</p>
+                <FixtureTeam name={dashboard.nextMatch.awayTeam} flag={dashboard.nextMatch.awayFlag} />
               </div>
               <p className="mt-4 text-sm text-slate-400">{dashboard.nextMatch.venue || "Tournament stadium"}</p>
             </div>
@@ -125,9 +126,11 @@ export default function MatchCenterPage() {
             <div className="mt-5">
               <div className="rounded-lg border border-white/10 bg-white/[0.045] p-5">
                 <p className="text-sm uppercase tracking-[0.18em] text-slate-400">Full time</p>
-                <p className="mt-3 text-3xl font-semibold text-white">
-                  {match.teams.home.name} {formatResult(match)} {match.teams.away.name}
-                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-3 text-3xl font-semibold text-white">
+                  <TeamInline team={match.teams.home} size="md" />
+                  <span>{formatResult(match)}</span>
+                  <TeamInline team={match.teams.away} size="md" />
+                </div>
                 <p className="mt-2 text-xs uppercase tracking-[0.14em] text-slate-500">{resultRoundLabel}</p>
                 <p className="mt-3 text-sm text-pitch-100">{simulation.headline}</p>
               </div>
@@ -176,9 +179,11 @@ export default function MatchCenterPage() {
                 <div className="mt-3 grid gap-2 md:grid-cols-2">
                   {(simulation.otherResults || []).map((result) => (
                     <div key={result.fixtureId} className="rounded-md border border-white/10 bg-white/[0.04] p-3 text-sm">
-                      <p className="font-semibold text-white">
-                        {result.teams.home.name} {formatResult(result)} {result.teams.away.name}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2 font-semibold text-white">
+                        <TeamInline team={result.teams.home} size="sm" />
+                        <span>{formatResult(result)}</span>
+                        <TeamInline team={result.teams.away} size="sm" />
+                      </div>
                       <p className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500">
                         {result.stageName || `Group ${result.group}`}
                       </p>
@@ -246,6 +251,25 @@ function GoalSummary({ events }) {
         <p className="mt-3 rounded-md bg-white/[0.04] p-3 text-sm text-slate-400">No goals in this match.</p>
       )}
     </div>
+  );
+}
+
+function FixtureTeam({ name, flag, align = "left" }) {
+  return (
+    <div className={`flex min-w-0 items-center gap-2 ${align === "right" ? "justify-end" : ""}`}>
+      {align === "right" ? <span className="truncate text-xl font-semibold text-white">{name}</span> : null}
+      <Flag src={flag} alt={`${name} flag`} size="md" />
+      {align !== "right" ? <span className="truncate text-xl font-semibold text-white">{name}</span> : null}
+    </div>
+  );
+}
+
+function TeamInline({ team, size = "sm" }) {
+  return (
+    <span className="inline-flex min-w-0 items-center gap-2">
+      <Flag src={team?.flag} alt={`${team?.name || "Team"} flag`} size={size} />
+      <span>{team?.name || "TBD"}</span>
+    </span>
   );
 }
 

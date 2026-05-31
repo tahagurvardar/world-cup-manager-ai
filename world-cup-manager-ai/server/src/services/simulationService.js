@@ -507,8 +507,8 @@ export function simulateMatch(homeTeam, awayTeam, homeTactics, awayTactics, seed
       away: awayGoals,
     },
     teams: {
-      home: { code: homeTeam.code, name: homeTeam.name },
-      away: { code: awayTeam.code, name: awayTeam.name },
+      home: { code: homeTeam.code, name: homeTeam.name, flag: homeTeam.flag },
+      away: { code: awayTeam.code, name: awayTeam.name, flag: awayTeam.flag },
     },
     stats: {
       possession: { home: homePossession, away: awayPossession },
@@ -584,8 +584,8 @@ export function simulateKnockoutMatch(homeTeam, awayTeam, homeTactics, awayTacti
       normalTimeScore,
       extraTime,
       penalties,
-      winnerTeam: { code: winner.code, name: winner.name },
-      loserTeam: { code: loser.code, name: loser.name },
+      winnerTeam: { code: winner.code, name: winner.name, flag: winner.flag },
+      loserTeam: { code: loser.code, name: loser.name, flag: loser.flag },
     },
   };
 

@@ -7,7 +7,8 @@ This project uses the existing WorldCup idea as inspiration only. The codebase i
 ## Features
 
 - JWT register/login with protected game routes
-- National team selection from 48 sample countries
+- National team selection from the provided official 2026-style 48-team group structure
+- Local image-based SVG flag assets for every national team
 - Team dashboard with overall, morale, form, next match, tournament progress, and AI advice
 - 25-player fictional squads per country with position and attribute data
 - Tactics controls for formation, mentality, pressing, tempo, and defensive line
@@ -59,11 +60,17 @@ The MVP uses a 2026-style structure:
 The Round of 32 bracket is simplified for deterministic gameplay. It uses the 12 group winners, 12 runners-up, and best 8 third-placed teams in a fixed seeded order instead of the official third-place pairing matrix.
 Each knockout click simulates the next full round. Drawn knockout matches go to extra time, then penalties if still level.
 
+The team list and groups follow the provided 2026 World Cup structure used by this project, including Turkey in Group D with United States, Paraguay, and Australia. National team names and confederations are real, while all player names and attributes remain fictional/generated for gameplay.
+
+Flags are stored as local SVG image assets under `client/public/flags/` and referenced from team data with paths such as `/flags/turkey.svg`. The app does not use emoji flags or hotlinked external flag images.
+
 ## Project Structure
 
 ```text
 world-cup-manager-ai/
   client/
+    public/
+      flags/
     src/
       components/
       context/

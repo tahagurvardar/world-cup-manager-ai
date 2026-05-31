@@ -28,6 +28,7 @@ function emptyRow(team) {
   return {
     teamCode: team.code,
     teamName: team.name,
+    flag: team.flag,
     overall: team.overall,
     played: 0,
     wins: 0,
@@ -81,6 +82,8 @@ function withTeamFields(match, homeTeamCode, awayTeamCode, playedResults) {
     awayTeamCode,
     homeTeam: home?.name || match.homeSeed,
     awayTeam: away?.name || match.awaySeed,
+    homeFlag: home?.flag || null,
+    awayFlag: away?.flag || null,
     stage: match.stage,
     stageName: match.stageName,
     status: result ? "played" : "ready",

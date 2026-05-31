@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { BarChart3, CircleUserRound, Shield, Trophy } from "lucide-react";
+import Flag from "../components/Flag.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import Panel from "../components/Panel.jsx";
 import { useAuth } from "../hooks/useAuth";
@@ -52,7 +53,11 @@ export default function ProfilePage() {
         <Panel className="p-5">
           <div className="flex items-center gap-4">
             <span className="grid h-14 w-14 place-items-center rounded-lg bg-pitch-400/12 text-pitch-200">
-              <Shield size={28} />
+              {dashboard?.selectedTeam?.flag ? (
+                <Flag src={dashboard.selectedTeam.flag} alt={`${dashboard.selectedTeam.name} flag`} size="lg" />
+              ) : (
+                <Shield size={28} />
+              )}
             </span>
             <div>
               <h2 className="text-xl font-semibold text-white">{dashboard?.selectedTeam?.name || "No team selected"}</h2>
@@ -152,7 +157,10 @@ function HistoryCard({ record }) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{record.edition || record.year || 2026} Edition</p>
-          <h3 className="mt-2 text-xl font-semibold text-white">{record.champion || "Champion TBD"}</h3>
+          <h3 className="mt-2 flex items-center gap-2 text-xl font-semibold text-white">
+            <Flag src={record.championFlag} alt={`${record.champion || "Champion"} flag`} size="sm" />
+            <span>{record.champion || "Champion TBD"}</span>
+          </h3>
           <p className="mt-1 text-sm text-slate-400">
             Final: {record.champion || "TBD"} vs {record.runnerUp || "TBD"}
           </p>

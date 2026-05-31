@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { GitBranch, Medal, RotateCcw, ShieldCheck, Table2, Trophy } from "lucide-react";
+import Flag from "../components/Flag.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import Panel from "../components/Panel.jsx";
@@ -234,7 +235,9 @@ function GroupStageTab({ tournament, thirdPlaceQualifiedCodes }) {
 
                   return (
                     <tr key={row.teamCode} className="text-slate-300">
-                      <td className="py-3 pr-4 font-medium text-white">{row.teamName}</td>
+                      <td className="py-3 pr-4 font-medium text-white">
+                        <TeamCell name={row.teamName} flag={row.flag} />
+                      </td>
                       <td className="py-3 pr-4">{row.played}</td>
                       <td className="py-3 pr-4">{row.wins}</td>
                       <td className="py-3 pr-4">{row.draws}</td>
@@ -288,7 +291,9 @@ function ThirdPlaceTab({ ranking }) {
             {ranking.map((row) => (
               <tr key={`${row.group}-${row.teamCode}`} className={row.qualifies ? "bg-pitch-400/[0.04] text-slate-200" : "text-slate-400"}>
                 <td className="py-3 pr-4 font-semibold text-white">{row.rank}</td>
-                <td className="py-3 pr-4 font-medium text-white">{row.teamName}</td>
+                <td className="py-3 pr-4 font-medium text-white">
+                  <TeamCell name={row.teamName} flag={row.flag} />
+                </td>
                 <td className="py-3 pr-4">Group {row.group}</td>
                 <td className="py-3 pr-4 font-semibold text-pitch-100">{row.points}</td>
                 <td className="py-3 pr-4">{row.goalDifference}</td>
@@ -429,8 +434,12 @@ function ChampionCelebration({ finalSummary }) {
     <div className="mb-5 rounded-lg border border-pitch-300/25 bg-gradient-to-br from-pitch-400/18 via-white/[0.055] to-ink-900 p-6 ring-1 ring-pitch-300/10">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <span className="grid h-14 w-14 place-items-center rounded-lg bg-pitch-400 text-ink-950 shadow-[0_0_30px_rgba(74,222,128,0.24)]">
-            <Trophy size={31} />
+          <span
+            className={`grid h-14 place-items-center rounded-lg bg-pitch-400 text-ink-950 shadow-[0_0_30px_rgba(74,222,128,0.24)] ${
+              finalSummary.championFlag ? "w-20" : "w-14"
+            }`}
+          >
+            {finalSummary.championFlag ? <Flag src={finalSummary.championFlag} alt={`${finalSummary.champion} flag`} size="xl" className="border-ink-950/20" /> : <Trophy size={31} />}
           </span>
           <p className="mt-5 text-xs font-semibold uppercase tracking-[0.24em] text-pitch-100">World Cup Champions</p>
           <h3 className="mt-2 text-4xl font-black tracking-normal text-white sm:text-5xl">{finalSummary.champion}</h3>
@@ -438,9 +447,9 @@ function ChampionCelebration({ finalSummary }) {
         </div>
 
         <div className="grid gap-3 text-sm sm:grid-cols-3 lg:min-w-[460px]">
-          <MiniSummary label="Runner-up" value={finalSummary.runnerUp} />
-          <MiniSummary label="Third place" value={finalSummary.thirdPlace} />
-          <MiniSummary label="Fourth place" value={finalSummary.fourthPlace} />
+          <MiniSummary label="Runner-up" value={finalSummary.runnerUp} flag={finalSummary.runnerUpFlag} />
+          <MiniSummary label="Third place" value={finalSummary.thirdPlace} flag={finalSummary.thirdPlaceFlag} />
+          <MiniSummary label="Fourth place" value={finalSummary.fourthPlace} flag={finalSummary.fourthPlaceFlag} />
         </div>
       </div>
 
@@ -453,11 +462,14 @@ function ChampionCelebration({ finalSummary }) {
   );
 }
 
-function MiniSummary({ label, value }) {
+function MiniSummary({ label, value, flag }) {
   return (
     <div className="rounded-md border border-white/10 bg-ink-950/35 p-3">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
-      <p className="mt-2 font-semibold text-white">{value || "TBD"}</p>
+      <div className="mt-2 flex items-center gap-2 font-semibold text-white">
+        <Flag src={flag} alt={`${value || "Team"} flag`} size="sm" />
+        <span>{value || "TBD"}</span>
+      </div>
     </div>
   );
 }
@@ -481,6 +493,7 @@ function BracketMatch({ match }) {
     <div className="rounded-md border border-white/10 bg-white/[0.04] p-3 text-sm">
       <BracketTeam
         name={match.homeTeam || match.homeSeed}
+        flag={match.homeFlag}
         score={played ? match.score?.home : null}
         isWinner={match.winnerTeamCode && match.winnerTeamCode === match.homeTeamCode}
       />
@@ -490,6 +503,7 @@ function BracketMatch({ match }) {
       </div>
       <BracketTeam
         name={match.awayTeam || match.awaySeed}
+        flag={match.awayFlag}
         score={played ? match.score?.away : null}
         isWinner={match.winnerTeamCode && match.winnerTeamCode === match.awayTeamCode}
       />
@@ -498,16 +512,28 @@ function BracketMatch({ match }) {
   );
 }
 
-function BracketTeam({ name, score, isWinner }) {
+function BracketTeam({ name, flag, score, isWinner }) {
   return (
     <div
       className={`flex min-h-9 items-center justify-between gap-2 rounded-md px-2 py-2 ${
         isWinner ? "bg-pitch-400/12 text-pitch-50 ring-1 ring-pitch-300/20" : "bg-white/[0.035] text-slate-300"
       }`}
     >
-      <span className="truncate font-medium">{name}</span>
+      <span className="flex min-w-0 items-center gap-2">
+        <Flag src={flag} alt={`${name} flag`} size="xs" />
+        <span className="truncate font-medium">{name}</span>
+      </span>
       <span className="font-semibold">{score ?? "-"}</span>
     </div>
+  );
+}
+
+function TeamCell({ name, flag }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <Flag src={flag} alt={`${name} flag`} size="sm" />
+      <span className="truncate">{name}</span>
+    </span>
   );
 }
 
@@ -624,6 +650,10 @@ function getFinalSummary(tournament) {
     runnerUp: podium.runnerUp || getLoserName(finalMatch),
     thirdPlace: podium.thirdPlace || getWinnerName(thirdPlaceMatch),
     fourthPlace: podium.fourthPlace || getLoserName(thirdPlaceMatch),
+    championFlag: getWinnerFlag(finalMatch),
+    runnerUpFlag: getLoserFlag(finalMatch),
+    thirdPlaceFlag: getWinnerFlag(thirdPlaceMatch),
+    fourthPlaceFlag: getLoserFlag(thirdPlaceMatch),
     finalScore: getWinnerFirstScore(finalMatch),
     finalResolution: getSentenceResolution(finalMatch),
     awards: tournament?.awards?.individual || {},
@@ -655,5 +685,21 @@ function getLoserName(match) {
   if (match.knockout?.loserTeam?.name) return match.knockout.loserTeam.name;
   if (match.loserTeamCode === match.homeTeamCode) return match.homeTeam || match.homeSeed;
   if (match.loserTeamCode === match.awayTeamCode) return match.awayTeam || match.awaySeed;
+  return null;
+}
+
+function getWinnerFlag(match) {
+  if (!match) return null;
+  if (match.knockout?.winnerTeam?.flag) return match.knockout.winnerTeam.flag;
+  if (match.winnerTeamCode === match.homeTeamCode) return match.homeFlag;
+  if (match.winnerTeamCode === match.awayTeamCode) return match.awayFlag;
+  return null;
+}
+
+function getLoserFlag(match) {
+  if (!match) return null;
+  if (match.knockout?.loserTeam?.flag) return match.knockout.loserTeam.flag;
+  if (match.loserTeamCode === match.homeTeamCode) return match.homeFlag;
+  if (match.loserTeamCode === match.awayTeamCode) return match.awayFlag;
   return null;
 }

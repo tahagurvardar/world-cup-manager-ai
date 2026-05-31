@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BrainCircuit, CalendarDays, Gauge, ShieldCheck, TrendingUp, UsersRound } from "lucide-react";
 import { PolarAngleAxis, PolarGrid, Radar, RadarChart, ResponsiveContainer } from "recharts";
+import Flag from "../components/Flag.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import Panel from "../components/Panel.jsx";
@@ -75,6 +76,15 @@ export default function DashboardPage() {
       <PageHeader
         title={`${dashboard.selectedTeam.name} Dashboard`}
         description="Tournament command center for squad condition, next match context, AI tactical advice, and recent progress."
+        action={
+          <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2">
+            <Flag src={dashboard.selectedTeam.flag} alt={`${dashboard.selectedTeam.name} flag`} size="lg" />
+            <div>
+              <p className="text-sm font-semibold text-white">{dashboard.selectedTeam.name}</p>
+              <p className="text-xs text-slate-400">Group {dashboard.selectedTeam.group}</p>
+            </div>
+          </div>
+        }
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -177,9 +187,11 @@ export default function DashboardPage() {
             <div className="mt-4 space-y-3">
               {dashboard.recentResults.map((result) => (
                 <div key={result.fixtureId} className="rounded-md border border-white/10 bg-white/[0.04] p-4">
-                  <p className="font-semibold text-white">
-                    {result.teams.home.name} {result.score.home}-{result.score.away} {result.teams.away.name}
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2 font-semibold text-white">
+                    <TeamNameWithFlag team={result.teams.home} />
+                    <span>{result.score.home}-{result.score.away}</span>
+                    <TeamNameWithFlag team={result.teams.away} />
+                  </div>
                   <p className="mt-1 text-sm text-slate-400">
                     {result.stageName || `Group ${result.group}, Matchday ${result.matchday}`}
                   </p>
@@ -205,6 +217,16 @@ export default function DashboardPage() {
                   <div key={item.id} className="rounded-md border border-white/10 bg-white/[0.04] p-4">
                     <p className="font-semibold text-white">{item.headline}</p>
                     <p className="mt-1 text-sm text-slate-400">{item.summary}</p>
+                    {item.teams?.length ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {item.teams.map((team) => (
+                          <span key={`${item.id}-${team.code}`} className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-xs font-semibold text-slate-200">
+                            <Flag src={team.flag} alt={`${team.name} flag`} size="xs" />
+                            {team.name}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -248,6 +270,15 @@ function RecordItem({ label, value }) {
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</p>
       <p className="mt-1 font-semibold text-white">{value}</p>
     </div>
+  );
+}
+
+function TeamNameWithFlag({ team }) {
+  return (
+    <span className="inline-flex min-w-0 items-center gap-2">
+      <Flag src={team?.flag} alt={`${team?.name || "Team"} flag`} size="sm" />
+      <span>{team?.name || "TBD"}</span>
+    </span>
   );
 }
 

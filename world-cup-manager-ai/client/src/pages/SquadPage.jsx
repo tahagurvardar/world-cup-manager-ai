@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search, Shirt } from "lucide-react";
+import Flag from "../components/Flag.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import Panel from "../components/Panel.jsx";
@@ -14,6 +15,7 @@ const fallbackPlayers = [
 export default function SquadPage() {
   const [players, setPlayers] = useState([]);
   const [team, setTeam] = useState("Selected Team");
+  const [flag, setFlag] = useState("");
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [position, setPosition] = useState("ALL");
@@ -24,6 +26,7 @@ export default function SquadPage() {
       .then((data) => {
         if (isMounted) {
           setTeam(data.team);
+          setFlag(data.flag || "");
           setPlayers(data.players);
         }
       })
@@ -52,7 +55,11 @@ export default function SquadPage() {
 
   return (
     <>
-      <PageHeader title={`${team} Squad`} description="Full national team pool with core attributes for match simulation and tactical decisions." />
+      <PageHeader
+        title={`${team} Squad`}
+        description="Full national team pool with core attributes for match simulation and tactical decisions."
+        action={flag ? <Flag src={flag} alt={`${team} flag`} size="lg" /> : null}
+      />
 
       <Panel className="p-5">
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

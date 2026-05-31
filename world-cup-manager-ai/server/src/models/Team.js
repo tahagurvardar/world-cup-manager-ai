@@ -26,6 +26,8 @@ const teamSchema = new mongoose.Schema(
     name: { type: String, required: true },
     group: { type: String, required: true },
     region: String,
+    confederation: String,
+    flag: String,
     overall: Number,
     morale: Number,
     form: Number,
