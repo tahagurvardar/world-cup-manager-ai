@@ -68,6 +68,7 @@ export default function DashboardPage() {
   const nextOpponentName = dashboard.nextOpponent?.name || getNextOpponentName(dashboard.nextMatch, dashboard.selectedTeam.code);
   const routeToFinal = dashboard.routeToFinal?.length ? dashboard.routeToFinal : ["Group Stage", "Round of 32", "Final"];
   const stageCardValue = formatStageForCard(dashboard.tournamentStage);
+  const managerCareer = getManagerCareer(dashboard.managerCareer);
 
   return (
     <>
@@ -121,6 +122,19 @@ export default function DashboardPage() {
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
         <div className="space-y-6">
+          <Panel className="p-5">
+            <h2 className="text-lg font-semibold text-white">Manager Record</h2>
+            <p className="mt-3 text-2xl font-black text-white">
+              {managerCareer.wins}W - {managerCareer.draws}D - {managerCareer.losses}L
+            </p>
+            <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+              <RecordItem label="Win Rate" value={`${managerCareer.winRate}%`} />
+              <RecordItem label="Goals" value={`${managerCareer.goalsFor}-${managerCareer.goalsAgainst}`} />
+              <RecordItem label="Best Finish" value={managerCareer.bestTournamentFinish} />
+              <RecordItem label="Trophies Won" value={managerCareer.trophiesWon} />
+            </div>
+          </Panel>
+
           <Panel className="p-5">
             <h2 className="text-lg font-semibold text-white">Route to Final</h2>
             <div className="mt-4 space-y-2">
@@ -212,6 +226,29 @@ function getNextOpponentName(nextMatch, selectedTeamCode) {
 function formatStageForCard(stage) {
   if (!stage) return "TBD";
   return stage.replace("Group Stage - Matchday", "Group MD");
+}
+
+function getManagerCareer(career = {}) {
+  return {
+    gamesManaged: career.gamesManaged || 0,
+    wins: career.wins || 0,
+    draws: career.draws || 0,
+    losses: career.losses || 0,
+    goalsFor: career.goalsFor || 0,
+    goalsAgainst: career.goalsAgainst || 0,
+    winRate: career.winRate || 0,
+    bestTournamentFinish: career.bestTournamentFinish || "Not started",
+    trophiesWon: career.trophiesWon || 0,
+  };
+}
+
+function RecordItem({ label, value }) {
+  return (
+    <div className="rounded-md bg-white/[0.04] px-3 py-2">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</p>
+      <p className="mt-1 font-semibold text-white">{value}</p>
+    </div>
+  );
 }
 
 function AdviceList({ title, items }) {

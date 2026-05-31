@@ -7,6 +7,7 @@ import {
   getTournament,
   selectTeam,
   simulateNextMatch,
+  startNewTournament,
   updateTactics,
 } from "../controllers/gameController.js";
 import { protect } from "../middleware/authMiddleware.js";
@@ -17,6 +18,7 @@ const router = Router();
 router.use(protect);
 
 router.post("/select-team", asyncHandler(selectTeam));
+router.post("/new-tournament", asyncHandler(startNewTournament));
 router.get("/dashboard", asyncHandler(getDashboard));
 router.get("/squad", asyncHandler(getSquad));
 router.get("/tactics", asyncHandler(getTactics));

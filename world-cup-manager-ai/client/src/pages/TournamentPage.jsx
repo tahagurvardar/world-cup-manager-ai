@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { GitBranch, Medal, ShieldCheck, Table2, Trophy } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { GitBranch, Medal, RotateCcw, ShieldCheck, Table2, Trophy } from "lucide-react";
 import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import Panel from "../components/Panel.jsx";
 import { sampleTeams } from "../data/sampleData";
-import { fetchTournament } from "../services/gameService";
+import { fetchTournament, startNewTournament } from "../services/gameService";
+import { getErrorMessage } from "../services/api";
 
 const tabs = [
   { key: "groupStage", label: "Group Stage", icon: Table2 },
@@ -96,9 +98,12 @@ function fallbackTournament() {
 }
 
 export default function TournamentPage() {
+  const navigate = useNavigate();
   const [tournament, setTournament] = useState(null);
   const [activeTab, setActiveTab] = useState("groupStage");
   const [loading, setLoading] = useState(true);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -124,6 +129,23 @@ export default function TournamentPage() {
   );
   const finalSummary = useMemo(() => getFinalSummary(tournament), [tournament]);
 
+  async function handleStartNewTournament() {
+    const confirmed = window.confirm("Start a new tournament? Career stats and tournament history will be kept.");
+    if (!confirmed) return;
+
+    setResetting(true);
+    setResetError("");
+
+    try {
+      await startNewTournament();
+      navigate("/select-team");
+    } catch (requestError) {
+      setResetError(getErrorMessage(requestError));
+    } finally {
+      setResetting(false);
+    }
+  }
+
   if (loading) return <LoadingState label="Loading tournament..." />;
 
   return (
@@ -141,7 +163,15 @@ export default function TournamentPage() {
         ) : null}
         {activeTab === "thirdPlace" ? <ThirdPlaceTab ranking={tournament.thirdPlaceRanking || []} /> : null}
         {activeTab === "knockout" ? <KnockoutTab tournament={tournament} /> : null}
-        {activeTab === "summary" ? <FinalSummaryTab tournament={tournament} finalSummary={finalSummary} /> : null}
+        {activeTab === "summary" ? (
+          <FinalSummaryTab
+            tournament={tournament}
+            finalSummary={finalSummary}
+            onStartNewTournament={handleStartNewTournament}
+            resetting={resetting}
+            resetError={resetError}
+          />
+        ) : null}
       </div>
     </>
   );
@@ -306,19 +336,34 @@ function KnockoutTab({ tournament }) {
   );
 }
 
-function FinalSummaryTab({ tournament, finalSummary }) {
+function FinalSummaryTab({ tournament, finalSummary, onStartNewTournament, resetting, resetError }) {
   if (finalSummary.completed) {
     return (
       <Panel className="p-5">
-        <div className="mb-5 flex items-center gap-3">
-          <span className="grid h-10 w-10 place-items-center rounded-md bg-pitch-400/12 text-pitch-200">
-            <Trophy size={20} />
-          </span>
-          <div>
-            <h2 className="text-lg font-semibold text-white">Tournament Complete</h2>
-            <p className="text-sm text-slate-400">The final standings are confirmed.</p>
+        <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <span className="grid h-10 w-10 place-items-center rounded-md bg-pitch-400/12 text-pitch-200">
+              <Trophy size={20} />
+            </span>
+            <div>
+              <h2 className="text-lg font-semibold text-white">Tournament Complete</h2>
+              <p className="text-sm text-slate-400">The final standings are confirmed.</p>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={onStartNewTournament}
+            disabled={resetting}
+            className="inline-flex items-center justify-center gap-2 rounded-md border border-pitch-300/25 bg-pitch-400/10 px-4 py-2.5 text-sm font-semibold text-pitch-100 transition hover:bg-pitch-400/15 disabled:opacity-50"
+          >
+            <RotateCcw size={17} />
+            {resetting ? "Resetting..." : "Start New Tournament"}
+          </button>
         </div>
+
+        {resetError ? <p className="mb-4 rounded-md border border-red-400/25 bg-red-500/10 px-3 py-2 text-sm text-red-200">{resetError}</p> : null}
+
+        <ChampionCelebration finalSummary={finalSummary} />
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SummaryTile icon={Trophy} label="Champion" value={finalSummary.champion} tone="green" />
@@ -326,10 +371,6 @@ function FinalSummaryTab({ tournament, finalSummary }) {
           <SummaryTile icon={Medal} label="Third Place" value={finalSummary.thirdPlace} tone="green" />
           <SummaryTile icon={Medal} label="Fourth Place" value={finalSummary.fourthPlace} />
         </div>
-
-        <p className="mt-5 rounded-md border border-pitch-300/15 bg-pitch-400/10 p-4 text-sm leading-6 text-pitch-50">
-          {finalSummary.champion} are World Cup champions. The 48-team tournament has completed through the final and third-place match.
-        </p>
 
         <div className="mt-6">
           <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">Tournament Awards</h3>
@@ -376,6 +417,60 @@ function FinalSummaryTab({ tournament, finalSummary }) {
         </div>
       </div>
     </Panel>
+  );
+}
+
+function ChampionCelebration({ finalSummary }) {
+  const goldenBoot = finalSummary.awards?.goldenBoot;
+  const bestPlayer = finalSummary.awards?.bestPlayer;
+  const goldenGlove = finalSummary.awards?.goldenGlove;
+
+  return (
+    <div className="mb-5 rounded-lg border border-pitch-300/25 bg-gradient-to-br from-pitch-400/18 via-white/[0.055] to-ink-900 p-6 ring-1 ring-pitch-300/10">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <span className="grid h-14 w-14 place-items-center rounded-lg bg-pitch-400 text-ink-950 shadow-[0_0_30px_rgba(74,222,128,0.24)]">
+            <Trophy size={31} />
+          </span>
+          <p className="mt-5 text-xs font-semibold uppercase tracking-[0.24em] text-pitch-100">World Cup Champions</p>
+          <h3 className="mt-2 text-4xl font-black tracking-normal text-white sm:text-5xl">{finalSummary.champion}</h3>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">{formatChampionSentence(finalSummary)}</p>
+        </div>
+
+        <div className="grid gap-3 text-sm sm:grid-cols-3 lg:min-w-[460px]">
+          <MiniSummary label="Runner-up" value={finalSummary.runnerUp} />
+          <MiniSummary label="Third place" value={finalSummary.thirdPlace} />
+          <MiniSummary label="Fourth place" value={finalSummary.fourthPlace} />
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-3 md:grid-cols-3">
+        <ChampionAward label="Golden Boot" award={goldenBoot} />
+        <ChampionAward label="Best Player" award={bestPlayer} />
+        <ChampionAward label="Golden Glove" award={goldenGlove} />
+      </div>
+    </div>
+  );
+}
+
+function MiniSummary({ label, value }) {
+  return (
+    <div className="rounded-md border border-white/10 bg-ink-950/35 p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+      <p className="mt-2 font-semibold text-white">{value || "TBD"}</p>
+    </div>
+  );
+}
+
+function ChampionAward({ label, award }) {
+  return (
+    <div className="rounded-md border border-pitch-300/15 bg-pitch-400/10 p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-pitch-100">{label}</p>
+      <p className="mt-2 text-lg font-semibold text-white">{award?.name || "TBD"}</p>
+      <p className="mt-1 text-sm text-slate-400">
+        {award ? `${award.teamName} - ${award.value}` : "Award pending"}
+      </p>
+    </div>
   );
 }
 
@@ -491,6 +586,33 @@ function formatResolutionLabel(match) {
   return "";
 }
 
+function getWinnerFirstScore(match) {
+  if (!match?.score || !match.winnerTeamCode) return null;
+  const winnerIsHome = match.winnerTeamCode === match.homeTeamCode;
+  return winnerIsHome ? `${match.score.home}-${match.score.away}` : `${match.score.away}-${match.score.home}`;
+}
+
+function getSentenceResolution(match) {
+  if (match?.knockout?.resolution === "penalties" && match.knockout.penalties) {
+    return ` on penalties (${match.knockout.penalties.home}-${match.knockout.penalties.away})`;
+  }
+
+  if (match?.knockout?.resolution === "extra-time") {
+    return " after extra time";
+  }
+
+  return "";
+}
+
+function formatChampionSentence(finalSummary) {
+  if (!finalSummary.champion || !finalSummary.runnerUp) {
+    return "The 48-team tournament has completed through the final and third-place match.";
+  }
+
+  const score = finalSummary.finalScore ? ` ${finalSummary.finalScore}` : "";
+  return `${finalSummary.champion} defeated ${finalSummary.runnerUp}${score} in the Final${finalSummary.finalResolution}.`;
+}
+
 function getFinalSummary(tournament) {
   const finalMatch = tournament?.knockout?.final?.[0];
   const thirdPlaceMatch = tournament?.knockout?.thirdPlace?.[0];
@@ -502,6 +624,8 @@ function getFinalSummary(tournament) {
     runnerUp: podium.runnerUp || getLoserName(finalMatch),
     thirdPlace: podium.thirdPlace || getWinnerName(thirdPlaceMatch),
     fourthPlace: podium.fourthPlace || getLoserName(thirdPlaceMatch),
+    finalScore: getWinnerFirstScore(finalMatch),
+    finalResolution: getSentenceResolution(finalMatch),
     awards: tournament?.awards?.individual || {},
   };
 }

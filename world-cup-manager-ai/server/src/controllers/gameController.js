@@ -1,6 +1,13 @@
 import { DEFAULT_TACTICS, GameState } from "../models/GameState.js";
 import { findTeamByCode, teams } from "../data/teams.js";
 import { generateMatchReport, generateNewsHeadline, generateTacticalAdvice } from "../services/aiService.js";
+import {
+  archiveCompletedTournament,
+  applyManagerMatchResult,
+  normalizeManagerCareer,
+  normalizeTournamentHistory,
+  updateCurrentTournamentFinish,
+} from "../services/managerCareerService.js";
 import { buildTournamentAwards, buildTournamentPlayerStats } from "../services/playerStatsService.js";
 import { getDefaultOpponentTactics, simulateKnockoutMatch, simulateMatch } from "../services/simulationService.js";
 import {
@@ -114,11 +121,16 @@ function buildTournamentPayload(state) {
   const tournament = buildTournamentSnapshot(state.selectedTeamCode, state.results);
   const playerStats = state.playerStats?.players ? state.playerStats : buildTournamentPlayerStats(state.results);
   const awards = state.tournamentAwards?.individual ? state.tournamentAwards : buildTournamentAwards(tournament, playerStats);
+  const managerCareer = state.selectedTeamCode
+    ? updateCurrentTournamentFinish(state.managerCareer, tournament, state.selectedTeamCode)
+    : { ...normalizeManagerCareer(state.managerCareer), currentTournamentFinish: "Awaiting team selection" };
 
   return {
     ...tournament,
     playerStats,
     awards,
+    managerCareer,
+    tournamentHistory: normalizeTournamentHistory(state.tournamentHistory),
   };
 }
 
@@ -132,6 +144,102 @@ function applyDerivedTournamentState(state, nextResults, tournamentAfter) {
   state.markModified("tournamentAwards");
 
   return { playerStats, awards };
+}
+
+function applyManagerCareerProgress(state, managerMatch, selectedTeamCode, tournamentAfter) {
+  const careerWithMatch = managerMatch
+    ? applyManagerMatchResult(state.managerCareer, managerMatch, selectedTeamCode)
+    : normalizeManagerCareer(state.managerCareer);
+
+  state.managerCareer = updateCurrentTournamentFinish(careerWithMatch, tournamentAfter, selectedTeamCode);
+  state.markModified("managerCareer");
+}
+
+function formatAwardForNews(award, fallback) {
+  if (!award) return fallback;
+  return `${award.name} (${award.teamName}, ${award.value})`;
+}
+
+function getFinalScoreLabel(tournamentAfter) {
+  const finalMatch = tournamentAfter.knockout?.final?.[0];
+  if (!finalMatch?.score) return "the Final";
+  const winnerIsHome = finalMatch.winnerTeamCode === finalMatch.homeTeamCode;
+
+  return winnerIsHome ? `${finalMatch.score.home}-${finalMatch.score.away}` : `${finalMatch.score.away}-${finalMatch.score.home}`;
+}
+
+function buildTournamentCompletionNews(tournamentAfter, awards, selectedTeamCode) {
+  const createdAt = new Date().toISOString();
+  const podium = awards?.podium || {};
+  const individual = awards?.individual || {};
+  const selectedTeam = findTeamByCode(selectedTeamCode);
+  const selectedStatus = tournamentAfter.selectedTeamStatus?.qualificationStatus || "Tournament complete";
+  const finalScore = getFinalScoreLabel(tournamentAfter);
+
+  return [
+    {
+      id: `champion-${Date.now()}`,
+      type: "champion",
+      headline: `${podium.champion} crowned World Cup champions`,
+      summary: `${podium.champion} defeated ${podium.runnerUp} ${finalScore} in the Final. ${podium.thirdPlace} claimed third place ahead of ${podium.fourthPlace}.`,
+      createdAt,
+    },
+    {
+      id: `manager-tournament-status-${Date.now()}`,
+      type: "manager-tournament-status",
+      headline: `${selectedTeam?.name || "Manager team"} finish: ${selectedStatus}`,
+      summary: `${selectedTeam?.name || "The manager's team"} completed the 2026-style tournament with a final status of ${selectedStatus}.`,
+      createdAt,
+    },
+    {
+      id: `tournament-awards-${Date.now()}`,
+      type: "tournament-awards",
+      headline: `${individual.goldenBoot?.name || "Golden Boot winner"} leads final tournament awards`,
+      summary: `Golden Boot: ${formatAwardForNews(individual.goldenBoot, "TBD")}. Best Player: ${formatAwardForNews(individual.bestPlayer, "TBD")}. Golden Glove: ${formatAwardForNews(individual.goldenGlove, "TBD")}.`,
+      createdAt,
+    },
+  ];
+}
+
+function archiveTournamentIfComplete(state, tournamentAfter, awards, selectedTeam) {
+  if (!tournamentAfter.tournamentComplete || state.currentTournamentArchived) {
+    return [];
+  }
+
+  const archived = archiveCompletedTournament({
+    career: state.managerCareer,
+    history: state.tournamentHistory,
+    tournament: tournamentAfter,
+    selectedTeam,
+    awards,
+  });
+
+  state.managerCareer = archived.career;
+  state.tournamentHistory = archived.history;
+  state.currentTournamentArchived = true;
+  state.markModified("managerCareer");
+  state.markModified("tournamentHistory");
+
+  return buildTournamentCompletionNews(tournamentAfter, awards, selectedTeam.code);
+}
+
+async function ensureCompletedTournamentArchived(state) {
+  const selectedTeam = state.selectedTeamCode ? findTeamByCode(state.selectedTeamCode) : null;
+  if (!selectedTeam || state.currentTournamentArchived) return;
+
+  const tournament = buildTournamentSnapshot(selectedTeam.code, state.results);
+  if (!tournament.tournamentComplete) return;
+
+  const playerStats = state.playerStats?.players ? state.playerStats : buildTournamentPlayerStats(state.results);
+  const awards = state.tournamentAwards?.individual ? state.tournamentAwards : buildTournamentAwards(tournament, playerStats);
+  const news = archiveTournamentIfComplete(state, tournament, awards, selectedTeam);
+
+  if (news.length) {
+    state.news.push(...news);
+    state.markModified("news");
+  }
+
+  await state.save();
 }
 
 function buildMatchdayNews(matches, managerMatch, managerReport, tournamentAfter, selectedTeamCode) {
@@ -314,12 +422,16 @@ function buildKnockoutNews(matches, managerMatch, featuredReport, tournamentAfte
 
 function buildDashboardPayload(state) {
   const selectedTeam = state.selectedTeamCode ? findTeamByCode(state.selectedTeamCode) : null;
+  const baseCareer = normalizeManagerCareer(state.managerCareer);
+  const tournamentHistory = normalizeTournamentHistory(state.tournamentHistory);
 
   if (!selectedTeam) {
     return {
       needsTeamSelection: true,
       selectedTeam: null,
       teams: teams.map(({ code, name, overall, group }) => ({ code, name, overall, group })),
+      managerCareer: { ...baseCareer, currentTournamentFinish: "Awaiting team selection" },
+      tournamentHistory,
     };
   }
 
@@ -327,6 +439,7 @@ function buildDashboardPayload(state) {
   const nextFixture = getNextFixture(selectedTeam.code, state.results);
   const opponent = nextFixture ? getOpponent(nextFixture, selectedTeam.code) : null;
   const tournament = buildTournamentSnapshot(selectedTeam.code, state.results);
+  const managerCareer = updateCurrentTournamentFinish(state.managerCareer, tournament, selectedTeam.code);
   const aiAdvice = opponent
     ? generateTacticalAdvice(selectedTeam, opponent, tactics)
     : {
@@ -360,6 +473,8 @@ function buildDashboardPayload(state) {
     tournamentProgress: tournament.progressText,
     tournamentStage: tournament.currentStage,
     routeToFinal: tournament.routeToFinal,
+    managerCareer,
+    tournamentHistory,
     canSimulate: Boolean(tournament.nextGlobalMatchday || tournament.nextKnockoutRound),
     nextKnockoutRound: tournament.nextKnockoutRound
       ? {
@@ -393,13 +508,17 @@ export async function selectTeam(req, res) {
   }
 
   const state = await getOrCreateGameState(req.user._id);
+  await ensureCompletedTournamentArchived(state);
   state.selectedTeamCode = team.code;
   state.tactics = { ...DEFAULT_TACTICS };
   state.results = [];
   state.news = [];
   state.playerStats = { players: [], leaders: {} };
   state.tournamentAwards = { completed: false, podium: {}, individual: {} };
+  state.managerCareer = updateCurrentTournamentFinish(state.managerCareer, buildTournamentSnapshot(team.code, []), team.code);
+  state.currentTournamentArchived = false;
   state.currentStage = "group";
+  state.markModified("managerCareer");
   await state.save();
 
   return res.json({
@@ -410,7 +529,35 @@ export async function selectTeam(req, res) {
 
 export async function getDashboard(req, res) {
   const state = await getOrCreateGameState(req.user._id);
+  await ensureCompletedTournamentArchived(state);
   return res.json({ dashboard: buildDashboardPayload(state) });
+}
+
+export async function startNewTournament(req, res) {
+  const state = await getOrCreateGameState(req.user._id);
+  await ensureCompletedTournamentArchived(state);
+
+  const managerCareer = {
+    ...normalizeManagerCareer(state.managerCareer),
+    currentTournamentFinish: "Awaiting team selection",
+  };
+
+  state.selectedTeamCode = null;
+  state.tactics = { ...DEFAULT_TACTICS };
+  state.results = [];
+  state.news = [];
+  state.playerStats = { players: [], leaders: {} };
+  state.tournamentAwards = { completed: false, podium: {}, individual: {} };
+  state.managerCareer = managerCareer;
+  state.currentTournamentArchived = false;
+  state.currentStage = "group";
+  state.markModified("managerCareer");
+  await state.save();
+
+  return res.json({
+    message: "New tournament started. Career stats and history were kept.",
+    dashboard: buildDashboardPayload(state),
+  });
 }
 
 export async function getSquad(req, res) {
@@ -482,7 +629,12 @@ export async function simulateNextMatch(req, res) {
     const nextResults = [...state.results, ...matches];
     const tournamentAfter = buildTournamentSnapshot(selectedTeam.code, nextResults);
     const { playerStats, awards } = applyDerivedTournamentState(state, nextResults, tournamentAfter);
-    const news = buildKnockoutNews(matches, managerMatch, report, tournamentAfter, selectedTeam.code, nextKnockoutRound.stageName);
+    applyManagerCareerProgress(state, managerMatch, selectedTeam.code, tournamentAfter);
+    const completionNews = archiveTournamentIfComplete(state, tournamentAfter, awards, selectedTeam);
+    const news = [
+      ...buildKnockoutNews(matches, managerMatch, report, tournamentAfter, selectedTeam.code, nextKnockoutRound.stageName),
+      ...completionNews,
+    ];
 
     state.results.push(...matches);
     state.news.push(...news);
@@ -527,6 +679,7 @@ export async function simulateNextMatch(req, res) {
   const nextResults = [...state.results, ...matches];
   const tournamentAfter = buildTournamentSnapshot(selectedTeam.code, nextResults);
   const { playerStats, awards } = applyDerivedTournamentState(state, nextResults, tournamentAfter);
+  applyManagerCareerProgress(state, managerMatch, selectedTeam.code, tournamentAfter);
   const news = buildMatchdayNews(matches, managerMatch, report, tournamentAfter, selectedTeam.code);
 
   state.results.push(...matches);
@@ -552,6 +705,7 @@ export async function simulateNextMatch(req, res) {
 
 export async function getTournament(req, res) {
   const state = await getOrCreateGameState(req.user._id);
+  await ensureCompletedTournamentArchived(state);
   return res.json({
     tournament: buildTournamentPayload(state),
   });
@@ -559,5 +713,6 @@ export async function getTournament(req, res) {
 
 export async function getNews(req, res) {
   const state = await getOrCreateGameState(req.user._id);
+  await ensureCompletedTournamentArchived(state);
   return res.json({ news: [...state.news].reverse() });
 }

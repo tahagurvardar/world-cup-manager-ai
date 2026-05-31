@@ -8,6 +8,20 @@ export const DEFAULT_TACTICS = {
   defensiveLine: "medium",
 };
 
+const DEFAULT_MANAGER_CAREER = {
+  gamesManaged: 0,
+  wins: 0,
+  draws: 0,
+  losses: 0,
+  goalsFor: 0,
+  goalsAgainst: 0,
+  winRate: 0,
+  bestTournamentFinish: "Not started",
+  currentTournamentFinish: "Not started",
+  tournamentsPlayed: 0,
+  trophiesWon: 0,
+};
+
 const tacticsSchema = new mongoose.Schema(
   {
     formation: {
@@ -48,6 +62,9 @@ const gameStateSchema = new mongoose.Schema(
     news: [{ type: mongoose.Schema.Types.Mixed }],
     playerStats: { type: mongoose.Schema.Types.Mixed, default: () => ({ players: [], leaders: {} }) },
     tournamentAwards: { type: mongoose.Schema.Types.Mixed, default: () => ({ completed: false, podium: {}, individual: {} }) },
+    managerCareer: { type: mongoose.Schema.Types.Mixed, default: () => ({ ...DEFAULT_MANAGER_CAREER }) },
+    tournamentHistory: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    currentTournamentArchived: { type: Boolean, default: false },
     currentStage: { type: String, default: "group" },
   },
   { timestamps: true },

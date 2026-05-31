@@ -10,6 +10,11 @@ export async function selectTeam(teamCode) {
   return data.dashboard;
 }
 
+export async function startNewTournament() {
+  const { data } = await api.post("/game/new-tournament");
+  return data.dashboard;
+}
+
 export async function fetchDashboard() {
   const { data } = await api.get("/game/dashboard");
   return data.dashboard;
