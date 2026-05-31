@@ -1,79 +1,102 @@
-import { useEffect, useState } from "react";
-import { GitBranch, Trophy } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { GitBranch, Medal, ShieldCheck, Table2, Trophy } from "lucide-react";
 import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import Panel from "../components/Panel.jsx";
 import { sampleTeams } from "../data/sampleData";
 import { fetchTournament } from "../services/gameService";
 
+const tabs = [
+  { key: "groupStage", label: "Group Stage", icon: Table2 },
+  { key: "thirdPlace", label: "Third-Place Ranking", icon: ShieldCheck },
+  { key: "knockout", label: "Knockout Bracket", icon: GitBranch },
+  { key: "summary", label: "Final Summary", icon: Trophy },
+];
+
 const roundLabels = {
   roundOf32: "Round of 32",
   roundOf16: "Round of 16",
-  quarterFinal: "Quarter Final",
-  semiFinal: "Semi Final",
+  quarterFinal: "Quarter Finals",
+  semiFinal: "Semi Finals",
   thirdPlace: "Third Place Match",
   final: "Final",
 };
 
 const bracketRounds = ["roundOf32", "roundOf16", "quarterFinal", "semiFinal", "thirdPlace", "final"];
+const defaultRouteToFinal = ["Group Stage", "Round of 32", "Round of 16", "Quarter Finals", "Semi Finals", "Final"];
 
 function fallbackTournament() {
   const groups = sampleTeams.reduce((collection, team) => {
     const group = collection[team.group] || [];
     return { ...collection, [team.group]: [...group, team] };
   }, {});
+  const table = Object.entries(groups).map(([group, teams]) => ({
+    group,
+    rows: teams.map((team) => ({
+      teamCode: team.code,
+      teamName: team.name,
+      overall: team.overall,
+      played: 0,
+      wins: 0,
+      draws: 0,
+      losses: 0,
+      goalsFor: 0,
+      goalsAgainst: 0,
+      goalDifference: 0,
+      points: 0,
+    })),
+  }));
+  const thirdPlaceRanking = table.map((group, index) => ({
+    ...group.rows[2],
+    group: group.group,
+    rank: index + 1,
+    qualifies: index < 8,
+  }));
 
   return {
     currentStage: "Group Stage",
-    thirdPlaceRanking: [],
+    groupStageComplete: false,
+    tournamentComplete: false,
+    thirdPlaceRanking,
+    selectedTeamStatus: null,
+    routeToFinal: defaultRouteToFinal,
     groupStage: {
       playedFixtures: 0,
       totalFixtures: 72,
-      table: Object.entries(groups).map(([group, teams]) => ({
-        group,
-        rows: teams.map((team) => ({
-          teamCode: team.code,
-          teamName: team.name,
-          overall: team.overall,
-          played: 0,
-          wins: 0,
-          draws: 0,
-          losses: 0,
-          goalsFor: 0,
-          goalsAgainst: 0,
-          goalDifference: 0,
-          points: 0,
-        })),
-      })),
+      table,
     },
     knockout: {
       roundOf32: Array.from({ length: 16 }, (_, index) => ({
         id: `R32-${index + 1}`,
         homeSeed: `Qualifier ${index + 1}`,
         awaySeed: `Qualifier ${32 - index}`,
+        status: "locked",
       })),
       roundOf16: Array.from({ length: 8 }, (_, index) => ({
         id: `R16-${index + 1}`,
         homeSeed: `Winner R32-${index * 2 + 1}`,
         awaySeed: `Winner R32-${index * 2 + 2}`,
+        status: "locked",
       })),
       quarterFinal: Array.from({ length: 4 }, (_, index) => ({
         id: `QF-${index + 1}`,
         homeSeed: `Winner R16-${index * 2 + 1}`,
         awaySeed: `Winner R16-${index * 2 + 2}`,
+        status: "locked",
       })),
       semiFinal: [
-        { id: "SF-1", homeSeed: "Winner QF-1", awaySeed: "Winner QF-2" },
-        { id: "SF-2", homeSeed: "Winner QF-3", awaySeed: "Winner QF-4" },
+        { id: "SF-1", homeSeed: "Winner QF-1", awaySeed: "Winner QF-2", status: "locked" },
+        { id: "SF-2", homeSeed: "Winner QF-3", awaySeed: "Winner QF-4", status: "locked" },
       ],
-      thirdPlace: [{ id: "TP-1", homeSeed: "Loser SF-1", awaySeed: "Loser SF-2" }],
-      final: [{ id: "F-1", homeSeed: "Winner SF-1", awaySeed: "Winner SF-2" }],
+      thirdPlace: [{ id: "TP-1", homeSeed: "Loser SF-1", awaySeed: "Loser SF-2", status: "locked" }],
+      final: [{ id: "F-1", homeSeed: "Winner SF-1", awaySeed: "Winner SF-2", status: "locked" }],
     },
   };
 }
 
 export default function TournamentPage() {
   const [tournament, setTournament] = useState(null);
+  const [activeTab, setActiveTab] = useState("groupStage");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -94,137 +117,278 @@ export default function TournamentPage() {
     };
   }, []);
 
+  const thirdPlaceQualifiedCodes = useMemo(
+    () => new Set((tournament?.thirdPlaceRanking || []).filter((row) => row.qualifies).map((row) => row.teamCode)),
+    [tournament],
+  );
+  const finalSummary = useMemo(() => getFinalSummary(tournament), [tournament]);
+
   if (loading) return <LoadingState label="Loading tournament..." />;
 
   return (
     <>
       <PageHeader
         title="Tournament"
-        description="2026-style 48-team group stage with top two plus the best eight third-place teams feeding a simplified Round of 32 bracket."
+        description="2026-style 48-team group stage, best third-place race, and simplified knockout bracket."
       />
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_420px]">
-        <div className="space-y-6">
-          {tournament.groupStage.table.map((group) => (
-            <Panel key={group.group} className="p-5">
-              <h2 className="mb-4 text-lg font-semibold text-white">Group {group.group}</h2>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[720px] text-left text-sm">
-                  <thead className="border-b border-white/10 text-xs uppercase tracking-[0.14em] text-slate-500">
-                    <tr>
-                      <th className="py-3 pr-4">Team</th>
-                      <th className="py-3 pr-4">P</th>
-                      <th className="py-3 pr-4">W</th>
-                      <th className="py-3 pr-4">D</th>
-                      <th className="py-3 pr-4">L</th>
-                      <th className="py-3 pr-4">GF</th>
-                      <th className="py-3 pr-4">GA</th>
-                      <th className="py-3 pr-4">GD</th>
-                      <th className="py-3">Pts</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/[0.08]">
-                    {group.rows.map((row) => (
-                      <tr key={row.teamCode} className="text-slate-300">
-                        <td className="py-3 pr-4 font-medium text-white">{row.teamName}</td>
-                        <td className="py-3 pr-4">{row.played}</td>
-                        <td className="py-3 pr-4">{row.wins}</td>
-                        <td className="py-3 pr-4">{row.draws}</td>
-                        <td className="py-3 pr-4">{row.losses}</td>
-                        <td className="py-3 pr-4">{row.goalsFor}</td>
-                        <td className="py-3 pr-4">{row.goalsAgainst}</td>
-                        <td className="py-3 pr-4">{row.goalDifference}</td>
-                        <td className="py-3 font-semibold text-pitch-100">{row.points}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Panel>
-          ))}
-        </div>
+      <TabNav activeTab={activeTab} onChange={setActiveTab} />
 
-        <div className="space-y-6">
-          <Panel className="p-5">
-            <h2 className="text-lg font-semibold text-white">Best Third-Place Ranking</h2>
-            <div className="mt-4 space-y-2">
-              {(tournament.thirdPlaceRanking || []).map((row) => (
-                <div
-                  key={`${row.group}-${row.teamCode}`}
-                  className="flex items-center justify-between gap-3 rounded-md bg-white/[0.04] p-3 text-sm"
-                >
-                  <div>
-                    <p className="font-semibold text-white">
-                      {row.rank}. {row.teamName}
-                    </p>
-                    <p className="text-xs uppercase tracking-[0.12em] text-slate-500">Group {row.group}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-semibold text-pitch-100">{row.points} pts</p>
-                    <p className="text-xs text-slate-500">GD {row.goalDifference}</p>
-                  </div>
-                </div>
-              ))}
-              {!tournament.thirdPlaceRanking?.length ? (
-                <p className="rounded-md border border-white/10 bg-white/[0.04] p-3 text-sm text-slate-400">
-                  Third-place ranking appears as group matches are played.
-                </p>
-              ) : null}
-            </div>
-          </Panel>
-
-          <Panel className="p-5">
-            <div className="mb-5 flex items-center gap-3">
-              <span className="grid h-10 w-10 place-items-center rounded-md bg-pitch-400/12 text-pitch-200">
-                <GitBranch size={20} />
-              </span>
-              <div>
-                <h2 className="text-lg font-semibold text-white">Knockout Path</h2>
-                <p className="text-sm text-slate-400">{tournament.currentStage}</p>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto pb-2">
-              <div className="grid min-w-[1140px] grid-cols-6 gap-3">
-                {bracketRounds.map((round) => (
-                  <div key={round}>
-                    <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      {roundLabels[round] || round}
-                    </h3>
-                    <div className="space-y-2">
-                      {(tournament.knockout[round] || []).map((match) => (
-                        <BracketMatch key={match.id} match={match} />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Panel>
-        </div>
+      <div className="mt-6">
+        {activeTab === "groupStage" ? (
+          <GroupStageTab tournament={tournament} thirdPlaceQualifiedCodes={thirdPlaceQualifiedCodes} />
+        ) : null}
+        {activeTab === "thirdPlace" ? <ThirdPlaceTab ranking={tournament.thirdPlaceRanking || []} /> : null}
+        {activeTab === "knockout" ? <KnockoutTab tournament={tournament} /> : null}
+        {activeTab === "summary" ? <FinalSummaryTab tournament={tournament} finalSummary={finalSummary} /> : null}
       </div>
     </>
   );
 }
 
+function TabNav({ activeTab, onChange }) {
+  return (
+    <div className="overflow-x-auto">
+      <div role="tablist" aria-label="Tournament sections" className="flex min-w-max gap-2 rounded-lg border border-white/10 bg-ink-850/70 p-2">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const selected = activeTab === tab.key;
+
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              onClick={() => onChange(tab.key)}
+              className={`inline-flex items-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold transition ${
+                selected ? "bg-pitch-400 text-ink-950" : "text-slate-300 hover:bg-white/[0.06] hover:text-white"
+              }`}
+            >
+              <Icon size={17} />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function GroupStageTab({ tournament, thirdPlaceQualifiedCodes }) {
+  return (
+    <div className="grid gap-6 xl:grid-cols-2">
+      {tournament.groupStage.table.map((group) => (
+        <Panel key={group.group} className="p-5">
+          <h2 className="mb-4 text-lg font-semibold text-white">Group {group.group}</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[860px] text-left text-sm">
+              <thead className="border-b border-white/10 text-xs uppercase tracking-[0.14em] text-slate-500">
+                <tr>
+                  <th className="py-3 pr-4">Team</th>
+                  <th className="py-3 pr-4">P</th>
+                  <th className="py-3 pr-4">W</th>
+                  <th className="py-3 pr-4">D</th>
+                  <th className="py-3 pr-4">L</th>
+                  <th className="py-3 pr-4">GF</th>
+                  <th className="py-3 pr-4">GA</th>
+                  <th className="py-3 pr-4">GD</th>
+                  <th className="py-3 pr-4">Pts</th>
+                  <th className="py-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/[0.08]">
+                {group.rows.map((row, index) => {
+                  const status = getGroupQualificationStatus(row, index, tournament.groupStageComplete, thirdPlaceQualifiedCodes);
+
+                  return (
+                    <tr key={row.teamCode} className="text-slate-300">
+                      <td className="py-3 pr-4 font-medium text-white">{row.teamName}</td>
+                      <td className="py-3 pr-4">{row.played}</td>
+                      <td className="py-3 pr-4">{row.wins}</td>
+                      <td className="py-3 pr-4">{row.draws}</td>
+                      <td className="py-3 pr-4">{row.losses}</td>
+                      <td className="py-3 pr-4">{row.goalsFor}</td>
+                      <td className="py-3 pr-4">{row.goalsAgainst}</td>
+                      <td className="py-3 pr-4">{row.goalDifference}</td>
+                      <td className="py-3 pr-4 font-semibold text-pitch-100">{row.points}</td>
+                      <td className="py-3">
+                        <StatusPill tone={status.tone}>{status.label}</StatusPill>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      ))}
+    </div>
+  );
+}
+
+function ThirdPlaceTab({ ranking }) {
+  return (
+    <Panel className="p-5">
+      <div className="mb-5 flex items-center gap-3">
+        <span className="grid h-10 w-10 place-items-center rounded-md bg-pitch-400/12 text-pitch-200">
+          <ShieldCheck size={20} />
+        </span>
+        <div>
+          <h2 className="text-lg font-semibold text-white">Best Third-Place Ranking</h2>
+          <p className="text-sm text-slate-400">Top eight third-placed teams qualify for the Round of 32.</p>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[760px] text-left text-sm">
+          <thead className="border-b border-white/10 text-xs uppercase tracking-[0.14em] text-slate-500">
+            <tr>
+              <th className="py-3 pr-4">Rank</th>
+              <th className="py-3 pr-4">Team</th>
+              <th className="py-3 pr-4">Group</th>
+              <th className="py-3 pr-4">Pts</th>
+              <th className="py-3 pr-4">GD</th>
+              <th className="py-3 pr-4">GF</th>
+              <th className="py-3">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/[0.08]">
+            {ranking.map((row) => (
+              <tr key={`${row.group}-${row.teamCode}`} className={row.qualifies ? "bg-pitch-400/[0.04] text-slate-200" : "text-slate-400"}>
+                <td className="py-3 pr-4 font-semibold text-white">{row.rank}</td>
+                <td className="py-3 pr-4 font-medium text-white">{row.teamName}</td>
+                <td className="py-3 pr-4">Group {row.group}</td>
+                <td className="py-3 pr-4 font-semibold text-pitch-100">{row.points}</td>
+                <td className="py-3 pr-4">{row.goalDifference}</td>
+                <td className="py-3 pr-4">{row.goalsFor}</td>
+                <td className="py-3">
+                  <StatusPill tone={row.qualifies ? "green" : "red"}>{row.qualifies ? "Qualified" : "Eliminated"}</StatusPill>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Panel>
+  );
+}
+
+function KnockoutTab({ tournament }) {
+  return (
+    <Panel className="p-5">
+      <div className="mb-5 flex items-center gap-3">
+        <span className="grid h-10 w-10 place-items-center rounded-md bg-pitch-400/12 text-pitch-200">
+          <GitBranch size={20} />
+        </span>
+        <div>
+          <h2 className="text-lg font-semibold text-white">Knockout Bracket</h2>
+          <p className="text-sm text-slate-400">{tournament.currentStage}</p>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto pb-2">
+        <div className="grid min-w-[1320px] grid-cols-6 gap-4">
+          {bracketRounds.map((round) => (
+            <div key={round}>
+              <h3 className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{roundLabels[round]}</h3>
+              <div className="space-y-3">
+                {(tournament.knockout[round] || []).map((match) => (
+                  <BracketMatch key={match.id} match={match} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function FinalSummaryTab({ tournament, finalSummary }) {
+  if (finalSummary.completed) {
+    return (
+      <Panel className="p-5">
+        <div className="mb-5 flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-md bg-pitch-400/12 text-pitch-200">
+            <Trophy size={20} />
+          </span>
+          <div>
+            <h2 className="text-lg font-semibold text-white">Tournament Complete</h2>
+            <p className="text-sm text-slate-400">The final standings are confirmed.</p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <SummaryTile icon={Trophy} label="Champion" value={finalSummary.champion} tone="green" />
+          <SummaryTile icon={Medal} label="Runner-up" value={finalSummary.runnerUp} />
+          <SummaryTile icon={Medal} label="Third Place" value={finalSummary.thirdPlace} tone="green" />
+          <SummaryTile icon={Medal} label="Fourth Place" value={finalSummary.fourthPlace} />
+        </div>
+
+        <p className="mt-5 rounded-md border border-pitch-300/15 bg-pitch-400/10 p-4 text-sm leading-6 text-pitch-50">
+          {finalSummary.champion} are World Cup champions. The 48-team tournament has completed through the final and third-place match.
+        </p>
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel className="p-5">
+      <div className="mb-5 flex items-center gap-3">
+        <span className="grid h-10 w-10 place-items-center rounded-md bg-pitch-400/12 text-pitch-200">
+          <Trophy size={20} />
+        </span>
+        <div>
+          <h2 className="text-lg font-semibold text-white">Final Summary</h2>
+          <p className="text-sm text-slate-400">{tournament.currentStage}</p>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+        <div className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Manager Status</p>
+          <p className="mt-3 text-lg font-semibold text-white">
+            {tournament.selectedTeamStatus?.qualificationStatus || "No manager team selected"}
+          </p>
+          <p className="mt-2 text-sm text-slate-400">{tournament.progressText || tournament.currentStage}</p>
+        </div>
+
+        <div className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Remaining Path</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {(tournament.routeToFinal?.length ? tournament.routeToFinal : defaultRouteToFinal).map((stage, index) => (
+              <div key={`${stage}-${index}`} className="rounded-md bg-white/[0.04] px-3 py-2 text-sm font-medium text-slate-200">
+                {stage}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 function BracketMatch({ match }) {
+  const played = match.status === "played";
+
   return (
     <div className="rounded-md border border-white/10 bg-white/[0.04] p-3 text-sm">
       <BracketTeam
         name={match.homeTeam || match.homeSeed}
-        score={match.score?.home}
+        score={played ? match.score?.home : null}
         isWinner={match.winnerTeamCode && match.winnerTeamCode === match.homeTeamCode}
       />
-      <div className="my-2 flex items-center justify-between text-xs uppercase tracking-[0.12em] text-slate-500">
+      <div className="my-2 flex items-center justify-between gap-2 text-xs uppercase tracking-[0.12em] text-slate-500">
         <span>{match.id}</span>
-        <Trophy size={14} className={match.status === "played" ? "text-pitch-200" : "text-slate-600"} />
+        <StatusPill tone={played ? "green" : "slate"}>{played ? "Played" : "Scheduled"}</StatusPill>
       </div>
       <BracketTeam
         name={match.awayTeam || match.awaySeed}
-        score={match.score?.away}
+        score={played ? match.score?.away : null}
         isWinner={match.winnerTeamCode && match.winnerTeamCode === match.awayTeamCode}
       />
-      <p className="mt-2 text-xs capitalize text-slate-500">{formatBracketStatus(match)}</p>
+      {formatResolutionLabel(match) ? <p className="mt-2 text-xs font-medium text-amber-200">{formatResolutionLabel(match)}</p> : null}
     </div>
   );
 }
@@ -233,7 +397,7 @@ function BracketTeam({ name, score, isWinner }) {
   return (
     <div
       className={`flex min-h-9 items-center justify-between gap-2 rounded-md px-2 py-2 ${
-        isWinner ? "bg-pitch-400/12 text-pitch-50" : "bg-white/[0.035] text-slate-300"
+        isWinner ? "bg-pitch-400/12 text-pitch-50 ring-1 ring-pitch-300/20" : "bg-white/[0.035] text-slate-300"
       }`}
     >
       <span className="truncate font-medium">{name}</span>
@@ -242,14 +406,88 @@ function BracketTeam({ name, score, isWinner }) {
   );
 }
 
-function formatBracketStatus(match) {
+function SummaryTile({ icon: Icon, label, value, tone = "slate" }) {
+  const iconClass = tone === "green" ? "bg-pitch-400/12 text-pitch-100 ring-pitch-300/20" : "bg-white/[0.06] text-slate-300 ring-white/10";
+
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+      <span className={`grid h-10 w-10 place-items-center rounded-md ring-1 ${iconClass}`}>
+        <Icon size={20} />
+      </span>
+      <p className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+      <p className="mt-2 text-xl font-semibold text-white">{value || "TBD"}</p>
+    </div>
+  );
+}
+
+function StatusPill({ children, tone = "slate" }) {
+  const toneClass =
+    tone === "green"
+      ? "border-pitch-300/20 bg-pitch-400/10 text-pitch-100"
+      : tone === "amber"
+        ? "border-amber-300/20 bg-amber-400/10 text-amber-100"
+        : tone === "red"
+          ? "border-red-300/20 bg-red-400/10 text-red-100"
+          : "border-white/10 bg-white/[0.05] text-slate-300";
+
+  return <span className={`inline-flex rounded-md border px-2 py-1 text-xs font-semibold ${toneClass}`}>{children}</span>;
+}
+
+function getGroupQualificationStatus(row, index, groupStageComplete, thirdPlaceQualifiedCodes) {
+  if (index < 2) {
+    return { label: "Qualified", tone: "green" };
+  }
+
+  if (index === 2) {
+    if (groupStageComplete && thirdPlaceQualifiedCodes.has(row.teamCode)) {
+      return { label: "Qualified", tone: "green" };
+    }
+
+    return groupStageComplete ? { label: "Eliminated", tone: "red" } : { label: "Third-place candidate", tone: "amber" };
+  }
+
+  return { label: "Eliminated", tone: "red" };
+}
+
+function formatResolutionLabel(match) {
   if (match.knockout?.resolution === "penalties" && match.knockout.penalties) {
-    return `played · ${match.knockout.penalties.home}-${match.knockout.penalties.away} pens`;
+    return `Penalties ${match.knockout.penalties.home}-${match.knockout.penalties.away}`;
   }
 
   if (match.knockout?.resolution === "extra-time") {
-    return "played · after extra time";
+    return "After extra time";
   }
 
-  return match.status || "locked";
+  return "";
+}
+
+function getFinalSummary(tournament) {
+  const finalMatch = tournament?.knockout?.final?.[0];
+  const thirdPlaceMatch = tournament?.knockout?.thirdPlace?.[0];
+
+  return {
+    completed: Boolean(tournament?.tournamentComplete && finalMatch?.status === "played" && thirdPlaceMatch?.status === "played"),
+    champion: getWinnerName(finalMatch),
+    runnerUp: getLoserName(finalMatch),
+    thirdPlace: getWinnerName(thirdPlaceMatch),
+    fourthPlace: getLoserName(thirdPlaceMatch),
+  };
+}
+
+function getWinnerName(match) {
+  if (!match) return null;
+  if (match.winnerTeam) return match.winnerTeam;
+  if (match.knockout?.winnerTeam?.name) return match.knockout.winnerTeam.name;
+  if (match.winnerTeamCode === match.homeTeamCode) return match.homeTeam || match.homeSeed;
+  if (match.winnerTeamCode === match.awayTeamCode) return match.awayTeam || match.awaySeed;
+  return null;
+}
+
+function getLoserName(match) {
+  if (!match) return null;
+  if (match.loserTeam) return match.loserTeam;
+  if (match.knockout?.loserTeam?.name) return match.knockout.loserTeam.name;
+  if (match.loserTeamCode === match.homeTeamCode) return match.homeTeam || match.homeSeed;
+  if (match.loserTeamCode === match.awayTeamCode) return match.awayTeam || match.awaySeed;
+  return null;
 }
