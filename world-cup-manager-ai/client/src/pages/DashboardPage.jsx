@@ -78,7 +78,7 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Team Overall" value={dashboard.selectedTeam.overall} detail={dashboard.selectedTeam.style} icon={Gauge} />
-        <StatCard label="Current Stage" value={stageCardValue} detail={`Group ${dashboard.selectedTeam.group} · Position ${dashboard.groupPosition || "TBD"}`} icon={TrendingUp} />
+        <StatCard label="Current Stage" value={stageCardValue} detail={`Group ${dashboard.selectedTeam.group} - Position ${dashboard.groupPosition || "TBD"}`} icon={TrendingUp} />
         <StatCard label="Next Opponent" value={nextOpponentName || "TBD"} detail={dashboard.tournamentProgress} icon={CalendarDays} tone="amber" />
         <StatCard label="Qualification" value={statusLabel} detail={dashboard.qualificationStatus} icon={ShieldCheck} />
       </div>
@@ -142,7 +142,7 @@ export default function DashboardPage() {
             </div>
             <div className="space-y-3">
               {dashboard.keyPlayers.map((player) => (
-                <div key={player.name} className="flex items-center justify-between rounded-md bg-white/[0.04] px-3 py-3">
+                <div key={`${player.name}-${player.position}`} className="flex items-center justify-between rounded-md bg-white/[0.04] px-3 py-3">
                   <div>
                     <p className="font-medium text-white">{player.name}</p>
                     <p className="text-sm text-slate-400">{player.position}</p>
@@ -169,6 +169,11 @@ export default function DashboardPage() {
                   <p className="mt-1 text-sm text-slate-400">
                     {result.stageName || `Group ${result.group}, Matchday ${result.matchday}`}
                   </p>
+                  {result.manOfTheMatch ? (
+                    <p className="mt-2 text-sm text-pitch-100">
+                      Man of the Match: {result.manOfTheMatch.name} ({result.manOfTheMatch.rating})
+                    </p>
+                  ) : null}
                 </div>
               ))}
             </div>

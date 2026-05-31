@@ -71,7 +71,7 @@ export function generateMatchReport(match) {
     keyTurningPoint: bestEvent
       ? `${bestEvent.minute}' - ${bestEvent.description}`
       : "The key turning point was the final 20 minutes, where fatigue changed the rhythm of pressing and recovery runs.",
-    bestPlayer: `${match.manOfTheMatch.name} (${match.manOfTheMatch.team})`,
+    bestPlayer: `${match.manOfTheMatch.name} (${match.manOfTheMatch.team}, ${match.manOfTheMatch.rating})`,
     improveBeforeNextMatch:
       match.stats.fouls.home + match.stats.fouls.away > 25
         ? "Reduce unnecessary fouls and protect key players from suspension risk."

@@ -1,6 +1,7 @@
 import { DEFAULT_TACTICS, GameState } from "../models/GameState.js";
 import { findTeamByCode, teams } from "../data/teams.js";
 import { generateMatchReport, generateNewsHeadline, generateTacticalAdvice } from "../services/aiService.js";
+import { buildTournamentAwards, buildTournamentPlayerStats } from "../services/playerStatsService.js";
 import { getDefaultOpponentTactics, simulateKnockoutMatch, simulateMatch } from "../services/simulationService.js";
 import {
   buildTournamentSnapshot,
@@ -104,6 +105,35 @@ function createKnockoutFixtureResult(fixture, selectedTeamCode, userTactics, see
   };
 }
 
+function formatManOfTheMatch(match) {
+  if (!match?.manOfTheMatch) return "TBD";
+  return `${match.manOfTheMatch.name} (${match.manOfTheMatch.rating})`;
+}
+
+function buildTournamentPayload(state) {
+  const tournament = buildTournamentSnapshot(state.selectedTeamCode, state.results);
+  const playerStats = state.playerStats?.players ? state.playerStats : buildTournamentPlayerStats(state.results);
+  const awards = state.tournamentAwards?.individual ? state.tournamentAwards : buildTournamentAwards(tournament, playerStats);
+
+  return {
+    ...tournament,
+    playerStats,
+    awards,
+  };
+}
+
+function applyDerivedTournamentState(state, nextResults, tournamentAfter) {
+  const playerStats = buildTournamentPlayerStats(nextResults);
+  const awards = buildTournamentAwards(tournamentAfter, playerStats);
+
+  state.playerStats = playerStats;
+  state.tournamentAwards = awards;
+  state.markModified("playerStats");
+  state.markModified("tournamentAwards");
+
+  return { playerStats, awards };
+}
+
 function buildMatchdayNews(matches, managerMatch, managerReport, tournamentAfter, selectedTeamCode) {
   const createdAt = new Date().toISOString();
   const news = [
@@ -111,7 +141,8 @@ function buildMatchdayNews(matches, managerMatch, managerReport, tournamentAfter
       id: `${managerMatch.fixtureId}-manager-${Date.now()}`,
       type: "manager-match",
       headline: generateNewsHeadline(managerMatch),
-      summary: managerReport.shortSummary,
+      summary: `${managerReport.shortSummary} Man of the Match: ${formatManOfTheMatch(managerMatch)}.`,
+      manOfTheMatch: managerMatch.manOfTheMatch,
       matchId: managerMatch.fixtureId,
       createdAt,
     },
@@ -137,7 +168,8 @@ function buildMatchdayNews(matches, managerMatch, managerReport, tournamentAfter
       id: `${upsets[0].match.fixtureId}-upset-${Date.now()}`,
       type: "biggest-upset",
       headline: `${upsets[0].winnerTeam.name} stun ${upsets[0].loserTeam.name} in Group ${upsets[0].match.group}`,
-      summary: `${upsets[0].winnerTeam.name} overcame a ${upsets[0].upsetGap}-point overall gap to reshape the qualification race.`,
+      summary: `${upsets[0].winnerTeam.name} overcame a ${upsets[0].upsetGap}-point overall gap to reshape the qualification race. Man of the Match: ${formatManOfTheMatch(upsets[0].match)}.`,
+      manOfTheMatch: upsets[0].match.manOfTheMatch,
       matchId: upsets[0].match.fixtureId,
       createdAt,
     });
@@ -151,7 +183,8 @@ function buildMatchdayNews(matches, managerMatch, managerReport, tournamentAfter
       id: `${highScoringMatch.fixtureId}-goals-${Date.now()}`,
       type: "highest-scoring",
       headline: `${highScoringMatch.teams.home.name} and ${highScoringMatch.teams.away.name} deliver matchday thriller`,
-      summary: `The ${highScoringMatch.score.home}-${highScoringMatch.score.away} result was the highest-scoring match of global matchday ${highScoringMatch.globalMatchday}.`,
+      summary: `The ${highScoringMatch.score.home}-${highScoringMatch.score.away} result was the highest-scoring match of global matchday ${highScoringMatch.globalMatchday}. Man of the Match: ${formatManOfTheMatch(highScoringMatch)}.`,
+      manOfTheMatch: highScoringMatch.manOfTheMatch,
       matchId: highScoringMatch.fixtureId,
       createdAt,
     });
@@ -193,7 +226,8 @@ function buildKnockoutNews(matches, managerMatch, featuredReport, tournamentAfte
       id: `${managerMatch.fixtureId}-manager-knockout-${Date.now()}`,
       type: "manager-knockout",
       headline: generateNewsHeadline(managerMatch),
-      summary: featuredReport.shortSummary,
+      summary: `${featuredReport.shortSummary} Man of the Match: ${formatManOfTheMatch(managerMatch)}.`,
+      manOfTheMatch: managerMatch.manOfTheMatch,
       matchId: managerMatch.fixtureId,
       createdAt,
     });
@@ -219,7 +253,8 @@ function buildKnockoutNews(matches, managerMatch, featuredReport, tournamentAfte
       id: `${upsets[0].match.fixtureId}-knockout-upset-${Date.now()}`,
       type: "knockout-upset",
       headline: `${upsets[0].winnerTeam.name} knock out ${upsets[0].loserTeam.name} in ${roundLabel} shock`,
-      summary: `${upsets[0].winnerTeam.name} overcame a ${upsets[0].upsetGap}-point overall gap to stay alive in the tournament.`,
+      summary: `${upsets[0].winnerTeam.name} overcame a ${upsets[0].upsetGap}-point overall gap to stay alive in the tournament. Man of the Match: ${formatManOfTheMatch(upsets[0].match)}.`,
+      manOfTheMatch: upsets[0].match.manOfTheMatch,
       matchId: upsets[0].match.fixtureId,
       createdAt,
     });
@@ -233,7 +268,8 @@ function buildKnockoutNews(matches, managerMatch, featuredReport, tournamentAfte
       id: `${highScoringMatch.fixtureId}-knockout-goals-${Date.now()}`,
       type: "knockout-thriller",
       headline: `${highScoringMatch.teams.home.name} and ${highScoringMatch.teams.away.name} serve up ${roundLabel} thriller`,
-      summary: `The ${highScoringMatch.score.home}-${highScoringMatch.score.away} scoreline was the highest-scoring tie of the round.`,
+      summary: `The ${highScoringMatch.score.home}-${highScoringMatch.score.away} scoreline was the highest-scoring tie of the round. Man of the Match: ${formatManOfTheMatch(highScoringMatch)}.`,
+      manOfTheMatch: highScoringMatch.manOfTheMatch,
       matchId: highScoringMatch.fixtureId,
       createdAt,
     });
@@ -253,10 +289,11 @@ function buildKnockoutNews(matches, managerMatch, featuredReport, tournamentAfte
       headline: generateNewsHeadline(featuredMatch),
       summary:
         featuredMatch.stage === "final"
-          ? `${winner.name} are crowned champions after defeating ${loser.name}.`
+          ? `${winner.name} are crowned champions after defeating ${loser.name}. Man of the Match: ${formatManOfTheMatch(featuredMatch)}.`
           : featuredMatch.stage === "thirdPlace"
-            ? `${winner.name} finish third after holding off ${loser.name}.`
-            : `${winner.name} advance, while ${loser.name} exit the simplified knockout bracket.`,
+            ? `${winner.name} finish third after holding off ${loser.name}. Man of the Match: ${formatManOfTheMatch(featuredMatch)}.`
+            : `${winner.name} advance, while ${loser.name} exit the simplified knockout bracket. Man of the Match: ${formatManOfTheMatch(featuredMatch)}.`,
+      manOfTheMatch: featuredMatch.manOfTheMatch,
       matchId: featuredMatch.fixtureId,
       createdAt,
     });
@@ -360,6 +397,8 @@ export async function selectTeam(req, res) {
   state.tactics = { ...DEFAULT_TACTICS };
   state.results = [];
   state.news = [];
+  state.playerStats = { players: [], leaders: {} };
+  state.tournamentAwards = { completed: false, podium: {}, individual: {} };
   state.currentStage = "group";
   await state.save();
 
@@ -442,6 +481,7 @@ export async function simulateNextMatch(req, res) {
     const headline = generateNewsHeadline(featuredMatch);
     const nextResults = [...state.results, ...matches];
     const tournamentAfter = buildTournamentSnapshot(selectedTeam.code, nextResults);
+    const { playerStats, awards } = applyDerivedTournamentState(state, nextResults, tournamentAfter);
     const news = buildKnockoutNews(matches, managerMatch, report, tournamentAfter, selectedTeam.code, nextKnockoutRound.stageName);
 
     state.results.push(...matches);
@@ -461,7 +501,7 @@ export async function simulateNextMatch(req, res) {
       report,
       headline,
       news,
-      tournament: tournamentAfter,
+      tournament: { ...tournamentAfter, playerStats, awards },
       dashboard: buildDashboardPayload(state),
     });
   }
@@ -486,6 +526,7 @@ export async function simulateNextMatch(req, res) {
   const headline = generateNewsHeadline(managerMatch);
   const nextResults = [...state.results, ...matches];
   const tournamentAfter = buildTournamentSnapshot(selectedTeam.code, nextResults);
+  const { playerStats, awards } = applyDerivedTournamentState(state, nextResults, tournamentAfter);
   const news = buildMatchdayNews(matches, managerMatch, report, tournamentAfter, selectedTeam.code);
 
   state.results.push(...matches);
@@ -504,7 +545,7 @@ export async function simulateNextMatch(req, res) {
     report,
     headline,
     news,
-    tournament: tournamentAfter,
+    tournament: { ...tournamentAfter, playerStats, awards },
     dashboard: buildDashboardPayload(state),
   });
 }
@@ -512,7 +553,7 @@ export async function simulateNextMatch(req, res) {
 export async function getTournament(req, res) {
   const state = await getOrCreateGameState(req.user._id);
   return res.json({
-    tournament: buildTournamentSnapshot(state.selectedTeamCode, state.results),
+    tournament: buildTournamentPayload(state),
   });
 }
 

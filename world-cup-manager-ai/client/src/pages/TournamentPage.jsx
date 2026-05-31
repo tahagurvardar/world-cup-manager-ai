@@ -60,6 +60,7 @@ function fallbackTournament() {
     thirdPlaceRanking,
     selectedTeamStatus: null,
     routeToFinal: defaultRouteToFinal,
+    awards: { completed: false, podium: {}, individual: {} },
     groupStage: {
       playedFixtures: 0,
       totalFixtures: 72,
@@ -329,6 +330,15 @@ function FinalSummaryTab({ tournament, finalSummary }) {
         <p className="mt-5 rounded-md border border-pitch-300/15 bg-pitch-400/10 p-4 text-sm leading-6 text-pitch-50">
           {finalSummary.champion} are World Cup champions. The 48-team tournament has completed through the final and third-place match.
         </p>
+
+        <div className="mt-6">
+          <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">Tournament Awards</h3>
+          <div className="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {getAwardItems(finalSummary.awards).map((award) => (
+              <AwardTile key={award.key} title={award.title} award={award.award} />
+            ))}
+          </div>
+        </div>
       </Panel>
     );
   }
@@ -420,6 +430,26 @@ function SummaryTile({ icon: Icon, label, value, tone = "slate" }) {
   );
 }
 
+function AwardTile({ title, award }) {
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.04] p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{title}</p>
+      <p className="mt-3 text-lg font-semibold text-white">{award?.name || "TBD"}</p>
+      {award ? (
+        <>
+          <p className="mt-1 text-sm text-slate-400">
+            {award.teamName} - {award.position}
+          </p>
+          <p className="mt-3 inline-flex rounded-md border border-pitch-300/20 bg-pitch-400/10 px-2 py-1 text-xs font-semibold text-pitch-100">
+            {award.value || "TBD"}
+          </p>
+          <p className="mt-2 text-xs text-slate-500">{award.detail}</p>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function StatusPill({ children, tone = "slate" }) {
   const toneClass =
     tone === "green"
@@ -464,14 +494,26 @@ function formatResolutionLabel(match) {
 function getFinalSummary(tournament) {
   const finalMatch = tournament?.knockout?.final?.[0];
   const thirdPlaceMatch = tournament?.knockout?.thirdPlace?.[0];
+  const podium = tournament?.awards?.podium || {};
 
   return {
     completed: Boolean(tournament?.tournamentComplete && finalMatch?.status === "played" && thirdPlaceMatch?.status === "played"),
-    champion: getWinnerName(finalMatch),
-    runnerUp: getLoserName(finalMatch),
-    thirdPlace: getWinnerName(thirdPlaceMatch),
-    fourthPlace: getLoserName(thirdPlaceMatch),
+    champion: podium.champion || getWinnerName(finalMatch),
+    runnerUp: podium.runnerUp || getLoserName(finalMatch),
+    thirdPlace: podium.thirdPlace || getWinnerName(thirdPlaceMatch),
+    fourthPlace: podium.fourthPlace || getLoserName(thirdPlaceMatch),
+    awards: tournament?.awards?.individual || {},
   };
+}
+
+function getAwardItems(awards = {}) {
+  return [
+    { key: "goldenBoot", title: "Golden Boot", award: awards.goldenBoot },
+    { key: "mostAssists", title: "Most Assists", award: awards.mostAssists },
+    { key: "goldenGlove", title: "Golden Glove", award: awards.goldenGlove },
+    { key: "bestPlayer", title: "Best Player", award: awards.bestPlayer },
+    { key: "bestYoungPlayer", title: "Best Young Player", award: awards.bestYoungPlayer },
+  ];
 }
 
 function getWinnerName(match) {

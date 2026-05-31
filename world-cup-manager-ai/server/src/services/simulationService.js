@@ -38,6 +38,11 @@ const DEFENSIVE_LINE = {
   high: { defense: -1, attack: 1, possession: 2 },
 };
 
+const ASSIST_PROBABILITY = 0.82;
+const DEFENSIVE_POSITIONS = new Set(["GK", "CB", "RB", "LB", "DM"]);
+const FORWARD_POSITIONS = new Set(["ST", "LW", "RW"]);
+const MIDFIELD_POSITIONS = new Set(["DM", "CM", "AM"]);
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -73,6 +78,35 @@ function normalizeTactics(tactics) {
 
 function topPlayers(team) {
   return [...team.players].sort((a, b) => b.overall - a.overall).slice(0, 11);
+}
+
+function matchPlayers(team) {
+  const selected = [];
+  const addPlayers = (positions, count) => {
+    const candidates = team.players
+      .filter((player) => positions.includes(player.position) && !selected.includes(player))
+      .sort((a, b) => b.overall + b.form - (a.overall + a.form));
+
+    selected.push(...candidates.slice(0, count));
+  };
+
+  addPlayers(["GK"], 1);
+  addPlayers(["RB"], 1);
+  addPlayers(["CB"], 2);
+  addPlayers(["LB"], 1);
+  addPlayers(["DM", "CM", "AM"], 3);
+  addPlayers(["LW", "RW", "ST"], 3);
+
+  if (selected.length < 11) {
+    selected.push(
+      ...team.players
+        .filter((player) => !selected.includes(player))
+        .sort((a, b) => b.overall + b.form - (a.overall + a.form))
+        .slice(0, 11 - selected.length),
+    );
+  }
+
+  return selected.slice(0, 11);
 }
 
 function squadProfile(team) {
@@ -151,58 +185,226 @@ function goalsFromXg(xg, random) {
 }
 
 function pickPlayer(team, positions, random) {
-  const candidates = team.players
+  const eligiblePlayers = matchPlayers(team);
+  const candidates = eligiblePlayers
     .filter((player) => positions.includes(player.position))
     .sort((a, b) => b.overall + b.form - (a.overall + a.form));
-  const pool = candidates.length ? candidates.slice(0, 6) : topPlayers(team);
+  const pool = candidates.length ? candidates.slice(0, 6) : eligiblePlayers;
   return pool[Math.floor(random() * pool.length)];
+}
+
+function playerId(team, player) {
+  const squadIndex = team.players.indexOf(player);
+  return `${team.code}:${squadIndex}:${player.name}`;
+}
+
+function playerRef(team, player) {
+  return {
+    id: playerId(team, player),
+    name: player.name,
+    teamCode: team.code,
+    teamName: team.name,
+    position: player.position,
+    age: player.age,
+  };
+}
+
+function assistText(assister) {
+  return assister ? ` (assist: ${assister.name})` : "";
+}
+
+function generateGoalEvent(team, minute, random, type = "goal") {
+  const scorer = pickPlayer(team, ["ST", "LW", "RW", "AM", "CM"], random);
+  let assister = null;
+
+  if (random() < ASSIST_PROBABILITY) {
+    const assistCandidates = matchPlayers(team).filter(
+      (player) => player.name !== scorer.name && ["AM", "CM", "DM", "RW", "LW", "RB", "LB", "ST"].includes(player.position),
+    );
+    assister = assistCandidates[Math.floor(random() * assistCandidates.length)] || null;
+  }
+
+  const scorerRef = playerRef(team, scorer);
+  const assisterRef = assister ? playerRef(team, assister) : null;
+  const extraTimeText = type === "extra-time-goal" ? " in extra time" : "";
+
+  return {
+    minute,
+    type,
+    team: team.name,
+    teamCode: team.code,
+    player: scorer.name,
+    scorer: scorerRef,
+    assister: assisterRef,
+    description: `${scorer.name} scores for ${team.name}${extraTimeText}${assistText(assisterRef)}.`,
+  };
 }
 
 function generateGoalEvents(team, goals, random) {
   const events = [];
   for (let index = 0; index < goals; index += 1) {
-    const scorer = pickPlayer(team, ["ST", "LW", "RW", "AM", "CM"], random);
-    const assist = pickPlayer(team, ["AM", "CM", "RW", "LW", "RB", "LB"], random);
     const minute = clamp(Math.round(6 + random() * 86), 1, 90);
-
-    events.push({
-      minute,
-      type: "goal",
-      team: team.name,
-      player: scorer.name,
-      description: `${scorer.name} scores for ${team.name} after a move created by ${assist.name}.`,
-    });
+    events.push(generateGoalEvent(team, minute, random));
   }
   return events;
 }
 
-function generateCardEvents(team, cardCount, random) {
+function generateCardEvents(team, cardCount, random, type = "yellow-card") {
   const events = [];
   for (let index = 0; index < cardCount; index += 1) {
     const player = pickPlayer(team, ["CB", "DM", "RB", "LB", "CM"], random);
-    const minute = clamp(Math.round(12 + random() * 76), 1, 90);
+    const minute = type === "red-card" ? clamp(Math.round(30 + random() * 58), 30, 90) : clamp(Math.round(12 + random() * 76), 1, 90);
+    const cardedPlayer = playerRef(team, player);
     events.push({
       minute,
-      type: "yellow-card",
+      type,
       team: team.name,
+      teamCode: team.code,
       player: player.name,
-      description: `${player.name} is booked after stopping a transition.`,
+      cardedPlayer,
+      description:
+        type === "red-card"
+          ? `${player.name} is sent off after a reckless challenge.`
+          : `${player.name} is booked after stopping a transition.`,
     });
   }
   return events;
 }
 
-function chooseManOfTheMatch(homeTeam, awayTeam, homeGoals, awayGoals, random) {
-  const winningTeam = homeGoals >= awayGoals ? homeTeam : awayTeam;
-  const tied = homeGoals === awayGoals;
-  const candidateTeam = tied && random() > 0.5 ? awayTeam : winningTeam;
-  const preferredPositions = tied ? ["GK", "CB", "DM", "CM"] : ["ST", "AM", "LW", "RW", "CM"];
-  const player = pickPlayer(candidateTeam, preferredPositions, random);
+function emptyContribution() {
+  return {
+    goals: 0,
+    assists: 0,
+    yellowCards: 0,
+    redCards: 0,
+    ownGoals: 0,
+  };
+}
+
+function addContribution(collection, id, field, amount = 1) {
+  if (!id) return;
+  if (!collection[id]) collection[id] = emptyContribution();
+  collection[id][field] += amount;
+}
+
+function buildContributions(events) {
+  return events.reduce((collection, event) => {
+    if (event.type === "goal" || event.type === "extra-time-goal") {
+      addContribution(collection, event.scorer?.id, "goals");
+      addContribution(collection, event.assister?.id, "assists");
+    }
+
+    if (event.type === "own-goal") {
+      addContribution(collection, event.ownGoalPlayer?.id, "ownGoals");
+    }
+
+    if (event.type === "yellow-card") {
+      addContribution(collection, event.cardedPlayer?.id, "yellowCards");
+    }
+
+    if (event.type === "red-card") {
+      addContribution(collection, event.cardedPlayer?.id, "redCards");
+    }
+
+    return collection;
+  }, {});
+}
+
+function resultForTeam(team, match, knockoutWinnerCode) {
+  if (knockoutWinnerCode) return knockoutWinnerCode === team.code ? "win" : "loss";
+  if (match.score.home === match.score.away) return "draw";
+  const homeWin = match.score.home > match.score.away;
+  return (homeWin && match.teams.home.code === team.code) || (!homeWin && match.teams.away.code === team.code) ? "win" : "loss";
+}
+
+function goalsAgainstForTeam(team, match) {
+  return match.teams.home.code === team.code ? match.score.away : match.score.home;
+}
+
+function baseRating(player, random) {
+  return 6.15 + (player.overall - 75) * 0.035 + (player.form - 75) * 0.018 + (player.morale - 75) * 0.012 + (random() - 0.5) * 0.55;
+}
+
+function contributionRatingBoost(player, contribution) {
+  const goalBoost = FORWARD_POSITIONS.has(player.position) ? 1.05 : MIDFIELD_POSITIONS.has(player.position) ? 1.2 : 1.45;
+  const assistBoost = FORWARD_POSITIONS.has(player.position) ? 0.55 : MIDFIELD_POSITIONS.has(player.position) ? 0.72 : 0.82;
+
+  return contribution.goals * goalBoost + contribution.assists * assistBoost - contribution.yellowCards * 0.32 - contribution.redCards * 1.05 - contribution.ownGoals * 1.25;
+}
+
+function defensiveRatingAdjustment(player, goalsAgainst, cleanSheet) {
+  if (!DEFENSIVE_POSITIONS.has(player.position)) return 0;
+  const cleanSheetBoost = player.position === "GK" ? 0.8 : player.position === "DM" ? 0.2 : 0.45;
+  const concessionPenalty = player.position === "GK" ? 0.18 : player.position === "DM" ? 0.06 : 0.12;
+
+  return cleanSheet ? cleanSheetBoost : -Math.max(0, goalsAgainst - 1) * concessionPenalty;
+}
+
+function resultRatingAdjustment(result) {
+  if (result === "win") return 0.28;
+  if (result === "draw") return 0.05;
+  return -0.18;
+}
+
+function buildRatingsForTeam(team, match, contributions, random, knockoutWinnerCode) {
+  const result = resultForTeam(team, match, knockoutWinnerCode);
+  const goalsAgainst = goalsAgainstForTeam(team, match);
+  const cleanSheet = goalsAgainst === 0;
+
+  return matchPlayers(team).map((player) => {
+    const id = playerId(team, player);
+    const contribution = contributions[id] || emptyContribution();
+    const rating = clamp(
+      baseRating(player, random) +
+        contributionRatingBoost(player, contribution) +
+        defensiveRatingAdjustment(player, goalsAgainst, cleanSheet) +
+        resultRatingAdjustment(result),
+      4,
+      10,
+    );
+
+    return {
+      playerId: id,
+      name: player.name,
+      teamCode: team.code,
+      teamName: team.name,
+      position: player.position,
+      age: player.age,
+      rating: Number(rating.toFixed(1)),
+      goals: contribution.goals,
+      assists: contribution.assists,
+      yellowCards: contribution.yellowCards,
+      redCards: contribution.redCards,
+      ownGoals: contribution.ownGoals,
+      cleanSheet: cleanSheet && player.position === "GK",
+      result,
+    };
+  });
+}
+
+function attachPlayerPerformance(match, homeTeam, awayTeam, random, knockoutWinnerCode = null) {
+  const contributions = buildContributions(match.events);
+  const homeRatings = buildRatingsForTeam(homeTeam, match, contributions, random, knockoutWinnerCode);
+  const awayRatings = buildRatingsForTeam(awayTeam, match, contributions, random, knockoutWinnerCode);
+  const playerRatings = [...homeRatings, ...awayRatings].sort((a, b) => {
+    if (b.rating !== a.rating) return b.rating - a.rating;
+    if (b.goals !== a.goals) return b.goals - a.goals;
+    if (b.assists !== a.assists) return b.assists - a.assists;
+    return a.name.localeCompare(b.name);
+  });
+  const bestPlayer = playerRatings[0];
 
   return {
-    name: player.name,
-    team: candidateTeam.name,
-    rating: Number(clamp(player.overall / 10 + 0.7 + random() * 1.2, 6.8, 9.8).toFixed(1)),
+    ...match,
+    playerRatings,
+    manOfTheMatch: {
+      playerId: bestPlayer.playerId,
+      name: bestPlayer.name,
+      team: bestPlayer.teamName,
+      teamCode: bestPlayer.teamCode,
+      position: bestPlayer.position,
+      rating: bestPlayer.rating,
+    },
   };
 }
 
@@ -282,12 +484,16 @@ export function simulateMatch(homeTeam, awayTeam, homeTactics, awayTactics, seed
   const awayFouls = Math.round(clamp(awayPower.fouls + random() * 5, 6, 20));
   const homeYellowCards = Math.round(clamp((homeFouls - 6) / 5 + random(), 0, 5));
   const awayYellowCards = Math.round(clamp((awayFouls - 6) / 5 + random(), 0, 5));
+  const homeRedCards = homeFouls > 16 && random() < 0.18 ? 1 : random() < 0.025 ? 1 : 0;
+  const awayRedCards = awayFouls > 16 && random() < 0.18 ? 1 : random() < 0.025 ? 1 : 0;
   const events = [
     { minute: 1, type: "kickoff", description: `${homeTeam.name} kick off against ${awayTeam.name}.` },
     ...generateGoalEvents(homeTeam, homeGoals, random),
     ...generateGoalEvents(awayTeam, awayGoals, random),
     ...generateCardEvents(homeTeam, homeYellowCards, random),
     ...generateCardEvents(awayTeam, awayYellowCards, random),
+    ...generateCardEvents(homeTeam, homeRedCards, random, "red-card"),
+    ...generateCardEvents(awayTeam, awayRedCards, random, "red-card"),
     {
       minute: 90,
       type: "full-time",
@@ -295,7 +501,7 @@ export function simulateMatch(homeTeam, awayTeam, homeTactics, awayTactics, seed
     },
   ].sort((a, b) => a.minute - b.minute);
 
-  return {
+  const match = {
     score: {
       home: homeGoals,
       away: awayGoals,
@@ -311,10 +517,12 @@ export function simulateMatch(homeTeam, awayTeam, homeTactics, awayTactics, seed
       shotsOnTarget: { home: homeShotsOnTarget, away: awayShotsOnTarget },
       fouls: { home: homeFouls, away: awayFouls },
       yellowCards: { home: homeYellowCards, away: awayYellowCards },
+      redCards: { home: homeRedCards, away: awayRedCards },
     },
-    manOfTheMatch: chooseManOfTheMatch(homeTeam, awayTeam, homeGoals, awayGoals, random),
     events,
   };
+
+  return attachPlayerPerformance(match, homeTeam, awayTeam, random);
 }
 
 export function simulateKnockoutMatch(homeTeam, awayTeam, homeTactics, awayTactics, seed = "knockout", stage = "Knockout") {
@@ -332,24 +540,15 @@ export function simulateKnockoutMatch(homeTeam, awayTeam, homeTactics, awayTacti
     extraTime = { home: 0, away: 0 };
 
     if (random() < 0.52) {
+      const minute = 104 + Math.floor(random() * 16);
       if (homeTeam.overall + random() * 10 >= awayTeam.overall + random() * 10) {
         extraTime.home = 1;
         match.score.home += 1;
-        events.push({
-          minute: 104 + Math.floor(random() * 16),
-          type: "extra-time-goal",
-          team: homeTeam.name,
-          description: `${homeTeam.name} find the breakthrough in extra time.`,
-        });
+        events.push(generateGoalEvent(homeTeam, minute, random, "extra-time-goal"));
       } else {
         extraTime.away = 1;
         match.score.away += 1;
-        events.push({
-          minute: 104 + Math.floor(random() * 16),
-          type: "extra-time-goal",
-          team: awayTeam.name,
-          description: `${awayTeam.name} find the breakthrough in extra time.`,
-        });
+        events.push(generateGoalEvent(awayTeam, minute, random, "extra-time-goal"));
       }
     }
 
@@ -376,7 +575,7 @@ export function simulateKnockoutMatch(homeTeam, awayTeam, homeTactics, awayTacti
     description: `${winner.name} advance from the ${stage}.`,
   });
 
-  return {
+  const resolvedMatch = {
     ...match,
     events: events.sort((a, b) => a.minute - b.minute),
     knockout: {
@@ -389,4 +588,6 @@ export function simulateKnockoutMatch(homeTeam, awayTeam, homeTactics, awayTacti
       loserTeam: { code: loser.code, name: loser.name },
     },
   };
+
+  return attachPlayerPerformance(resolvedMatch, homeTeam, awayTeam, random, winner.code);
 }

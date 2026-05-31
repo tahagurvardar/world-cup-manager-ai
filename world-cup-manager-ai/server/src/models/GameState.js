@@ -46,6 +46,8 @@ const gameStateSchema = new mongoose.Schema(
     tactics: { type: tacticsSchema, default: () => ({ ...DEFAULT_TACTICS }) },
     results: [{ type: mongoose.Schema.Types.Mixed }],
     news: [{ type: mongoose.Schema.Types.Mixed }],
+    playerStats: { type: mongoose.Schema.Types.Mixed, default: () => ({ players: [], leaders: {} }) },
+    tournamentAwards: { type: mongoose.Schema.Types.Mixed, default: () => ({ completed: false, podium: {}, individual: {} }) },
     currentStage: { type: String, default: "group" },
   },
   { timestamps: true },

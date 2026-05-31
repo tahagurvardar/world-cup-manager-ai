@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity, BadgeAlert, Crosshair, Play, Timer, Trophy } from "lucide-react";
+import { Activity, BadgeAlert, Crosshair, Play, Star, Timer, Trophy } from "lucide-react";
 import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import Panel from "../components/Panel.jsx";
@@ -51,6 +51,7 @@ export default function MatchCenterPage() {
 
   const match = simulation?.match;
   const report = simulation?.report;
+  const goalEvents = match ? getGoalEvents(match) : [];
   const canSimulate = dashboard?.canSimulate ?? Boolean(dashboard?.nextMatch);
   const activeRoundLabel = dashboard?.nextMatch?.stageName || dashboard?.nextKnockoutRound?.stageName;
   const isKnockoutContext = Boolean(activeRoundLabel && activeRoundLabel !== "Group Stage");
@@ -131,13 +132,15 @@ export default function MatchCenterPage() {
                 <p className="mt-3 text-sm text-pitch-100">{simulation.headline}</p>
               </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <Metric icon={Activity} label="Possession" value={`${match.stats.possession.home}% - ${match.stats.possession.away}%`} />
                 <Metric icon={Crosshair} label="xG" value={`${match.stats.xG.home} - ${match.stats.xG.away}`} />
                 <Metric icon={BadgeAlert} label="Yellow cards" value={`${match.stats.yellowCards.home} - ${match.stats.yellowCards.away}`} />
+                <Metric icon={Star} label="Man of Match" value={formatManOfTheMatch(match.manOfTheMatch)} />
               </div>
 
-              <div className="mt-5 grid gap-5 lg:grid-cols-2">
+              <div className="mt-5 grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
+                <GoalSummary events={goalEvents} />
                 <div>
                   <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">AI Match Report</h3>
                   <div className="mt-3 space-y-3 text-sm text-slate-300">
@@ -148,7 +151,7 @@ export default function MatchCenterPage() {
                     <ReportRow label="Improve" value={report.improveBeforeNextMatch} />
                   </div>
                 </div>
-                <div>
+                <div className="xl:col-span-2">
                   <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">Timeline</h3>
                   <div className="mt-3 max-h-[420px] space-y-2 overflow-y-auto pr-2">
                     {match.events.map((event, index) => (
@@ -163,6 +166,8 @@ export default function MatchCenterPage() {
                   </div>
                 </div>
               </div>
+
+              <PlayerRatings match={match} />
 
               <div className="mt-6">
                 <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">
@@ -208,6 +213,95 @@ function formatResult(match) {
   }
 
   return baseScore;
+}
+
+function getGoalEvents(match) {
+  return (match.events || []).filter((event) => event.type === "goal" || event.type === "extra-time-goal" || event.type === "own-goal");
+}
+
+function formatManOfTheMatch(manOfTheMatch) {
+  if (!manOfTheMatch) return "TBD";
+  return `${manOfTheMatch.name} (${manOfTheMatch.rating})`;
+}
+
+function GoalSummary({ events }) {
+  return (
+    <div>
+      <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">Scorers</h3>
+      {events.length ? (
+        <div className="mt-3 space-y-2">
+          {events.map((event, index) => (
+            <div key={`${event.minute}-${event.scorer?.id || event.player}-${index}`} className="rounded-md bg-white/[0.04] p-3 text-sm">
+              <p className="font-semibold text-white">
+                {event.minute}' {event.scorer?.name || event.player}
+              </p>
+              <p className="mt-1 text-slate-400">
+                {event.team}
+                {event.assister ? ` - assist: ${event.assister.name}` : " - unassisted"}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-md bg-white/[0.04] p-3 text-sm text-slate-400">No goals in this match.</p>
+      )}
+    </div>
+  );
+}
+
+function PlayerRatings({ match }) {
+  const homeRatings = getTeamRatings(match, match.teams.home.code);
+  const awayRatings = getTeamRatings(match, match.teams.away.code);
+
+  if (!homeRatings.length && !awayRatings.length) return null;
+
+  return (
+    <div className="mt-6">
+      <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">Player Ratings</h3>
+      <div className="mt-3 grid gap-4 xl:grid-cols-2">
+        <RatingsTable title={match.teams.home.name} ratings={homeRatings} />
+        <RatingsTable title={match.teams.away.name} ratings={awayRatings} />
+      </div>
+    </div>
+  );
+}
+
+function RatingsTable({ title, ratings }) {
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.04] p-3">
+      <h4 className="font-semibold text-white">{title}</h4>
+      <div className="mt-3 max-h-[380px] overflow-y-auto pr-1">
+        <table className="w-full text-left text-sm">
+          <thead className="text-xs uppercase tracking-[0.12em] text-slate-500">
+            <tr>
+              <th className="pb-2 pr-3">Player</th>
+              <th className="pb-2 pr-3">Pos</th>
+              <th className="pb-2 pr-3">G</th>
+              <th className="pb-2 pr-3">A</th>
+              <th className="pb-2 text-right">Rat</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/[0.08]">
+            {ratings.map((rating) => (
+              <tr key={rating.playerId}>
+                <td className="py-2 pr-3 font-medium text-white">{rating.name}</td>
+                <td className="py-2 pr-3 text-slate-400">{rating.position}</td>
+                <td className="py-2 pr-3 text-slate-300">{rating.goals}</td>
+                <td className="py-2 pr-3 text-slate-300">{rating.assists}</td>
+                <td className="py-2 text-right font-semibold text-pitch-100">{rating.rating.toFixed(1)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function getTeamRatings(match, teamCode) {
+  return (match.playerRatings || [])
+    .filter((rating) => rating.teamCode === teamCode)
+    .sort((a, b) => b.rating - a.rating || b.goals - a.goals || b.assists - a.assists || a.name.localeCompare(b.name));
 }
 
 function Metric({ icon: Icon, label, value }) {

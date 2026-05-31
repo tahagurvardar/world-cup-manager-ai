@@ -52,6 +52,11 @@ export default function NewsPage() {
               <div>
                 <h2 className="text-xl font-semibold text-white">{item.headline}</h2>
                 <p className="mt-2 text-sm leading-6 text-slate-400">{item.summary}</p>
+                {item.manOfTheMatch ? (
+                  <p className="mt-3 rounded-md border border-pitch-300/15 bg-pitch-400/10 px-3 py-2 text-sm font-semibold text-pitch-100">
+                    Man of the Match: {item.manOfTheMatch.name} ({item.manOfTheMatch.rating})
+                  </p>
+                ) : null}
                 <p className="mt-3 text-xs uppercase tracking-[0.16em] text-slate-500">
                   {new Date(item.createdAt).toLocaleString()}
                 </p>
