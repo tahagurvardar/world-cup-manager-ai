@@ -11,14 +11,24 @@ This project uses the existing WorldCup idea as inspiration only. The codebase i
 - Local image-based SVG flag assets for every national team
 - Team dashboard with overall, morale, form, next match, tournament progress, and AI advice
 - 25-player fictional squads per country with position and attribute data
-- Tactics controls for formation, mentality, pressing, tempo, and defensive line
+- Starting XI management: auto-pick the best eleven by position and overall for the active formation, with per-slot replacement
+- Bench management: build a 7–12 player bench (backup goalkeeper, defenders, midfielders, attackers) from the remaining squad
+- Tactical pitch visualization with shirt markers, names, positions, and overall ratings, reused on the Dashboard, Tactics preview, and Squad Starting XI tab
+- Drag-and-drop lineup editing on the tactical pitch, captain/vice-captain armbands, and a live team overall that updates with the selected eleven
+- Player profile pages (FM/FIFA-style) opened from the squad, Starting XI, bench, Match Center ratings, awards, and dashboard: technical/physical/mental attributes, a FIFA-style radar, tournament and career statistics, and a rating-form chart
+- Injuries and suspensions: players can pick up injuries during matches (chance scales with low stamina and high pressing/tempo), red cards and a second tournament yellow trigger one-match bans, and both are persisted per tournament with safe defaults
+- Unavailable players are surfaced everywhere (squad availability filter/badges, dimmed pitch markers, dashboard Squad Availability card, player profile status) and are auto-replaced from the bench before kickoff with a forced-change notice and generated news; injury and red-card events appear in the match timeline
+- Squad selection persists per manager save and is suggested/applied automatically when the formation changes
+- Tactics controls for formation, mentality, pressing, tempo, and defensive line, with a live formation preview on the pitch
 - Deterministic match simulation using team strength, form, morale, stamina, tactical matchups, and seeded variance
+- Match simulation uses the selected Starting XI for goals, assists, cards, ratings, and Man of the Match (falling back to the best auto-picked eleven when none is set), so only matchday players receive ratings
 - Match output with score, possession, xG, shots, shots on target, fouls, cards, man of the match, and minute-by-minute events
 - 2026-style tournament model with 12 groups, best third-place ranking, and a complete 32-team knockout phase
 - Full global matchday simulation so every scheduled group fixture is played together
 - Knockout matches resolve with extra time and penalties, then advance winners through the bracket
 - Rule-based AI tactical advice, match reports, notable matchday news, and qualification headlines
-- Dark football-manager-style React UI with responsive cards, tables, charts, and dashboard layout
+- Premium football-manager-style React UI: fixed glassmorphism sidebar with active glow, synced top header (team, tournament badge, quick actions), and a showcase dashboard with premium stat cards (team overall with ATT/MID/DEF, morale, last-5 form, FIFA ranking, tournament status), AI tactical advice beside a textured pitch, next-match panel, squad form, and a visual tournament-progress tracker
+- Subtle, restrained motion (card/button hover, progress transitions, page fade-in) and color-coded match player ratings
 
 ## Tech Stack
 
@@ -166,7 +176,10 @@ If the backend warns that `JWT_SECRET` is missing or still using the example val
 - `GET /api/teams/:code`
 - `POST /api/game/select-team`
 - `GET /api/game/dashboard`
-- `GET /api/game/squad`
+- `GET /api/game/squad` - returns the full player pool plus the saved Starting XI and bench for the active formation
+- `PUT /api/game/squad` - saves a Starting XI and bench selection
+- `POST /api/game/squad/auto` - returns a suggested Starting XI and bench for the current or a requested formation
+- `GET /api/game/player/:playerId` - returns a full player profile (`playerId` is `TEAMCODE-INDEX`, e.g. `TUR-5`): info, derived attributes, tournament stats, career stats, and rating history
 - `GET /api/game/tactics`
 - `PUT /api/game/tactics`
 - `POST /api/game/simulate` - simulates the next full global group matchday or knockout round

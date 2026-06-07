@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Shield } from "lucide-react";
 import Flag from "../components/Flag.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import LoadingState from "../components/LoadingState.jsx";
@@ -61,15 +61,11 @@ export default function SelectTeamPage() {
   return (
     <>
       <PageHeader
+        icon={Shield}
         title="Select National Team"
         description="Choose one country for the tournament save. This resets squad context, tactics, results, and news for the current manager profile."
         action={
-          <button
-            type="button"
-            disabled={!selected || saving}
-            onClick={handleConfirm}
-            className="inline-flex items-center gap-2 rounded-md bg-pitch-400 px-4 py-2.5 text-sm font-semibold text-ink-950 transition hover:bg-pitch-300 disabled:opacity-50"
-          >
+          <button type="button" disabled={!selected || saving} onClick={handleConfirm} className="btn-primary">
             <CheckCircle2 size={18} />
             {saving ? "Selecting..." : "Confirm Team"}
           </button>
@@ -81,7 +77,10 @@ export default function SelectTeamPage() {
       <div className="space-y-6">
         {Object.entries(groupedTeams).map(([group, groupTeams]) => (
           <section key={group}>
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-pitch-200">Group {group}</h2>
+            <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-pitch-200">
+              <span className="grid h-6 w-6 place-items-center rounded-lg bg-pitch-400/15 text-xs">{group}</span>
+              Group {group}
+            </h2>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {groupTeams.map((team) => {
                 const isSelected = selected === team.code;
@@ -90,21 +89,27 @@ export default function SelectTeamPage() {
                     type="button"
                     key={team.code}
                     onClick={() => setSelected(team.code)}
-                    className={`rounded-lg border p-4 text-left transition ${
+                    className={`group relative overflow-hidden rounded-2xl border p-4 text-left transition duration-300 hover:-translate-y-0.5 ${
                       isSelected
-                        ? "border-pitch-300 bg-pitch-400/12"
-                        : "border-white/10 bg-white/[0.045] hover:border-pitch-300/45"
+                        ? "border-pitch-300 bg-pitch-400/12 shadow-glow"
+                        : "border-white/10 bg-white/[0.045] hover:border-pitch-300/45 hover:shadow-glow"
                     }`}
                   >
+                    {isSelected ? (
+                      <span className="absolute right-3 top-3 grid h-6 w-6 place-items-center rounded-full bg-pitch-400 text-ink-950 shadow">
+                        <CheckCircle2 size={15} />
+                      </span>
+                    ) : null}
                     <div className="flex items-start justify-between">
-                      <Flag src={team.flag} alt={`${team.name} flag`} size="lg" />
-                      <span className="rounded-md bg-white/10 px-2 py-1 text-xs text-slate-300">OVR {team.overall}</span>
+                      <Flag src={team.flag} alt={`${team.name} flag`} size="xl" />
+                      {!isSelected ? <span className="rounded-lg bg-white/10 px-2 py-1 text-xs font-semibold text-slate-300">OVR {team.overall}</span> : null}
                     </div>
                     <p className="mt-4 text-lg font-semibold text-white">{team.name}</p>
                     <p className="mt-1 text-sm text-slate-400">{team.confederation || team.region}</p>
-                    <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-slate-400">
-                      <span>Morale {team.morale}</span>
-                      <span>Form {team.form}</span>
+                    <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
+                      <Metric label="OVR" value={team.overall} />
+                      <Metric label="Morale" value={team.morale} />
+                      <Metric label="Form" value={team.form} />
                     </div>
                   </button>
                 );
@@ -114,5 +119,14 @@ export default function SelectTeamPage() {
         ))}
       </div>
     </>
+  );
+}
+
+function Metric({ label, value }) {
+  return (
+    <div className="rounded-lg bg-white/[0.05] py-1.5">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="font-bold text-white">{value}</p>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { GitBranch, Medal, RotateCcw, ShieldCheck, Table2, Trophy } from "lucide-react";
 import Flag from "../components/Flag.jsx";
 import LoadingState from "../components/LoadingState.jsx";
@@ -8,6 +8,7 @@ import Panel from "../components/Panel.jsx";
 import { sampleTeams } from "../data/sampleData";
 import { fetchTournament, startNewTournament } from "../services/gameService";
 import { getErrorMessage } from "../services/api";
+import { routeIdFromSimId } from "../utils/player";
 
 const tabs = [
   { key: "groupStage", label: "Group Stage", icon: Table2 },
@@ -152,6 +153,7 @@ export default function TournamentPage() {
   return (
     <>
       <PageHeader
+        icon={Trophy}
         title="Tournament"
         description="2026-style 48-team group stage, best third-place race, and simplified knockout bracket."
       />
@@ -552,10 +554,17 @@ function SummaryTile({ icon: Icon, label, value, tone = "slate" }) {
 }
 
 function AwardTile({ title, award }) {
+  const routeId = award?.playerId ? routeIdFromSimId(award.playerId) : null;
   return (
     <div className="rounded-md border border-white/10 bg-white/[0.04] p-4">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">{title}</p>
-      <p className="mt-3 text-lg font-semibold text-white">{award?.name || "TBD"}</p>
+      {award?.name && routeId ? (
+        <Link to={`/player/${routeId}`} className="mt-3 inline-block text-lg font-semibold text-white transition hover:text-pitch-100 hover:underline">
+          {award.name}
+        </Link>
+      ) : (
+        <p className="mt-3 text-lg font-semibold text-white">{award?.name || "TBD"}</p>
+      )}
       {award ? (
         <>
           <p className="mt-1 text-sm text-slate-400">

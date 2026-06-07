@@ -25,6 +25,21 @@ export async function fetchSquad() {
   return data;
 }
 
+export async function saveSquad(selection) {
+  const { data } = await api.put("/game/squad", selection);
+  return data;
+}
+
+export async function autoSquad(formation) {
+  const { data } = await api.post("/game/squad/auto", formation ? { formation } : {});
+  return data;
+}
+
+export async function fetchPlayerProfile(playerId) {
+  const { data } = await api.get(`/game/player/${playerId}`);
+  return data.profile;
+}
+
 export async function fetchTactics() {
   const { data } = await api.get("/game/tactics");
   return data.tactics;

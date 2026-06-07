@@ -76,10 +76,6 @@ function normalizeTactics(tactics) {
   return { ...DEFAULT_TACTICS, ...tactics };
 }
 
-function topPlayers(team) {
-  return [...team.players].sort((a, b) => b.overall - a.overall).slice(0, 11);
-}
-
 function matchPlayers(team) {
   const selected = [];
   const addPlayers = (positions, count) => {
@@ -109,9 +105,16 @@ function matchPlayers(team) {
   return selected.slice(0, 11);
 }
 
-function squadProfile(team) {
-  const players = topPlayers(team);
+// Returns the eleven players used for the match: a manager-selected Starting XI when
+// supplied (array of eleven squad player references), otherwise the auto-picked best XI.
+function resolveMatchSquad(team, lineup) {
+  if (Array.isArray(lineup) && lineup.length === 11) return lineup;
+  return matchPlayers(team);
+}
 
+// Aggregates the attributes of the eleven players actually on the pitch, so team
+// strength reflects the manager's selected Starting XI (or the auto-picked best XI).
+function squadProfile(players) {
   return {
     overall: average(players.map((player) => player.overall)),
     form: average(players.map((player) => player.form)),
@@ -151,8 +154,8 @@ function tacticalProfile(tactics, opponentTactics) {
   };
 }
 
-function calculatePower(team, tactics, opponentTactics) {
-  const squad = squadProfile(team);
+function calculatePower(team, tactics, opponentTactics, squadPlayers) {
+  const squad = squadProfile(squadPlayers);
   const tactical = tacticalProfile(tactics, opponentTactics);
   const base =
     team.overall * 0.45 +
@@ -184,12 +187,11 @@ function goalsFromXg(xg, random) {
   return clamp(goals, 0, 6);
 }
 
-function pickPlayer(team, positions, random) {
-  const eligiblePlayers = matchPlayers(team);
-  const candidates = eligiblePlayers
+function pickPlayer(squad, positions, random) {
+  const candidates = squad
     .filter((player) => positions.includes(player.position))
     .sort((a, b) => b.overall + b.form - (a.overall + a.form));
-  const pool = candidates.length ? candidates.slice(0, 6) : eligiblePlayers;
+  const pool = candidates.length ? candidates.slice(0, 6) : squad;
   return pool[Math.floor(random() * pool.length)];
 }
 
@@ -201,6 +203,7 @@ function playerId(team, player) {
 function playerRef(team, player) {
   return {
     id: playerId(team, player),
+    index: team.players.indexOf(player),
     name: player.name,
     teamCode: team.code,
     teamName: team.name,
@@ -213,12 +216,12 @@ function assistText(assister) {
   return assister ? ` (assist: ${assister.name})` : "";
 }
 
-function generateGoalEvent(team, minute, random, type = "goal") {
-  const scorer = pickPlayer(team, ["ST", "LW", "RW", "AM", "CM"], random);
+function generateGoalEvent(team, squad, minute, random, type = "goal") {
+  const scorer = pickPlayer(squad, ["ST", "LW", "RW", "AM", "CM"], random);
   let assister = null;
 
   if (random() < ASSIST_PROBABILITY) {
-    const assistCandidates = matchPlayers(team).filter(
+    const assistCandidates = squad.filter(
       (player) => player.name !== scorer.name && ["AM", "CM", "DM", "RW", "LW", "RB", "LB", "ST"].includes(player.position),
     );
     assister = assistCandidates[Math.floor(random() * assistCandidates.length)] || null;
@@ -240,19 +243,19 @@ function generateGoalEvent(team, minute, random, type = "goal") {
   };
 }
 
-function generateGoalEvents(team, goals, random) {
+function generateGoalEvents(team, squad, goals, random) {
   const events = [];
   for (let index = 0; index < goals; index += 1) {
     const minute = clamp(Math.round(6 + random() * 86), 1, 90);
-    events.push(generateGoalEvent(team, minute, random));
+    events.push(generateGoalEvent(team, squad, minute, random));
   }
   return events;
 }
 
-function generateCardEvents(team, cardCount, random, type = "yellow-card") {
+function generateCardEvents(team, squad, cardCount, random, type = "yellow-card") {
   const events = [];
   for (let index = 0; index < cardCount; index += 1) {
-    const player = pickPlayer(team, ["CB", "DM", "RB", "LB", "CM"], random);
+    const player = pickPlayer(squad, ["CB", "DM", "RB", "LB", "CM"], random);
     const minute = type === "red-card" ? clamp(Math.round(30 + random() * 58), 30, 90) : clamp(Math.round(12 + random() * 76), 1, 90);
     const cardedPlayer = playerRef(team, player);
     events.push({
@@ -269,6 +272,79 @@ function generateCardEvents(team, cardCount, random, type = "yellow-card") {
     });
   }
   return events;
+}
+
+const INJURY_TYPES = ["hamstring strain", "ankle sprain", "knee knock", "muscle fatigue", "shoulder injury"];
+
+function injuryArticle(injuryType) {
+  return /^[aeiou]/i.test(injuryType) ? "an" : "a";
+}
+
+// Returns the per-match injury probability for a team given its lineup stamina and tactics.
+function injuryChance(squad, tactics) {
+  const avgStamina = average(squad.map((player) => player.stamina));
+  let chance = 0.03;
+  chance += clamp((80 - avgStamina) / 100, 0, 0.4) * 0.12; // up to ~+5% for very tired squads
+  if (tactics?.pressing === "high") chance += 0.015;
+  if (tactics?.tempo === "fast") chance += 0.01;
+  return clamp(chance, 0.01, 0.18);
+}
+
+// Rolls at most one injury per team per match. Tired players are likelier to break down.
+function generateInjury(team, squad, tactics, random) {
+  if (random() >= injuryChance(squad, tactics)) return null;
+
+  const weights = squad.map((player) => 1 + (100 - player.stamina) / 25);
+  const totalWeight = weights.reduce((total, weight) => total + weight, 0);
+  let pick = random() * totalWeight;
+  let chosen = squad[0];
+  for (let index = 0; index < squad.length; index += 1) {
+    pick -= weights[index];
+    if (pick <= 0) {
+      chosen = squad[index];
+      break;
+    }
+  }
+
+  const injuryType = INJURY_TYPES[Math.floor(random() * INJURY_TYPES.length)];
+  const severityRoll = random();
+  let severity = "minor";
+  let matchesOut = 1;
+  if (severityRoll >= 0.9) {
+    severity = "serious";
+    matchesOut = random() < 0.5 ? 3 : 4;
+  } else if (severityRoll >= 0.6) {
+    severity = "moderate";
+    matchesOut = 2;
+  }
+
+  const minute = clamp(Math.round(20 + random() * 68), 18, 90);
+  const ref = playerRef(team, chosen);
+
+  return {
+    event: {
+      minute,
+      type: "injury",
+      team: team.name,
+      teamCode: team.code,
+      player: chosen.name,
+      injuredPlayer: ref,
+      injuryType,
+      severity,
+      description: `${chosen.name} leaves the pitch with ${injuryArticle(injuryType)} ${injuryType}.`,
+    },
+    injury: {
+      teamCode: team.code,
+      index: ref.index,
+      playerId: ref.id,
+      name: chosen.name,
+      position: chosen.position,
+      injuryType,
+      severity,
+      matchesOut,
+      minute,
+    },
+  };
 }
 
 function emptyContribution() {
@@ -346,12 +422,12 @@ function resultRatingAdjustment(result) {
   return -0.18;
 }
 
-function buildRatingsForTeam(team, match, contributions, random, knockoutWinnerCode) {
+function buildRatingsForTeam(team, squad, match, contributions, random, knockoutWinnerCode) {
   const result = resultForTeam(team, match, knockoutWinnerCode);
   const goalsAgainst = goalsAgainstForTeam(team, match);
   const cleanSheet = goalsAgainst === 0;
 
-  return matchPlayers(team).map((player) => {
+  return squad.map((player) => {
     const id = playerId(team, player);
     const contribution = contributions[id] || emptyContribution();
     const rating = clamp(
@@ -382,10 +458,10 @@ function buildRatingsForTeam(team, match, contributions, random, knockoutWinnerC
   });
 }
 
-function attachPlayerPerformance(match, homeTeam, awayTeam, random, knockoutWinnerCode = null) {
+function attachPlayerPerformance(match, homeTeam, homeSquad, awayTeam, awaySquad, random, knockoutWinnerCode = null) {
   const contributions = buildContributions(match.events);
-  const homeRatings = buildRatingsForTeam(homeTeam, match, contributions, random, knockoutWinnerCode);
-  const awayRatings = buildRatingsForTeam(awayTeam, match, contributions, random, knockoutWinnerCode);
+  const homeRatings = buildRatingsForTeam(homeTeam, homeSquad, match, contributions, random, knockoutWinnerCode);
+  const awayRatings = buildRatingsForTeam(awayTeam, awaySquad, match, contributions, random, knockoutWinnerCode);
   const playerRatings = [...homeRatings, ...awayRatings].sort((a, b) => {
     if (b.rating !== a.rating) return b.rating - a.rating;
     if (b.goals !== a.goals) return b.goals - a.goals;
@@ -456,10 +532,12 @@ export function getDefaultOpponentTactics(team) {
   return DEFAULT_TACTICS;
 }
 
-export function simulateMatch(homeTeam, awayTeam, homeTactics, awayTactics, seed = "friendly") {
+export function simulateMatch(homeTeam, awayTeam, homeTactics, awayTactics, seed = "friendly", options = {}) {
+  const homeSquad = resolveMatchSquad(homeTeam, options.homeLineup);
+  const awaySquad = resolveMatchSquad(awayTeam, options.awayLineup);
   const random = createSeededRandom(`${seed}-${homeTeam.code}-${awayTeam.code}`);
-  const homePower = calculatePower(homeTeam, homeTactics, awayTactics);
-  const awayPower = calculatePower(awayTeam, awayTactics, homeTactics);
+  const homePower = calculatePower(homeTeam, homeTactics, awayTactics, homeSquad);
+  const awayPower = calculatePower(awayTeam, awayTactics, homeTactics, awaySquad);
   const homeAdvantage = 0.16;
   const homeXg = clamp(
     1.1 + (homePower.attack - awayPower.defense) / 16 + homeAdvantage + (random() - 0.5) * (0.6 + homePower.variance),
@@ -486,14 +564,23 @@ export function simulateMatch(homeTeam, awayTeam, homeTactics, awayTactics, seed
   const awayYellowCards = Math.round(clamp((awayFouls - 6) / 5 + random(), 0, 5));
   const homeRedCards = homeFouls > 16 && random() < 0.18 ? 1 : random() < 0.025 ? 1 : 0;
   const awayRedCards = awayFouls > 16 && random() < 0.18 ? 1 : random() < 0.025 ? 1 : 0;
+
+  // Injuries use a dedicated RNG so adding the feature does not shift any existing
+  // score/card/rating draws from the main sequence.
+  const injuryRandom = createSeededRandom(`${seed}-${homeTeam.code}-${awayTeam.code}-injury`);
+  const homeInjury = generateInjury(homeTeam, homeSquad, homeTactics, injuryRandom);
+  const awayInjury = generateInjury(awayTeam, awaySquad, awayTactics, injuryRandom);
+  const injuries = [homeInjury?.injury, awayInjury?.injury].filter(Boolean);
+
   const events = [
     { minute: 1, type: "kickoff", description: `${homeTeam.name} kick off against ${awayTeam.name}.` },
-    ...generateGoalEvents(homeTeam, homeGoals, random),
-    ...generateGoalEvents(awayTeam, awayGoals, random),
-    ...generateCardEvents(homeTeam, homeYellowCards, random),
-    ...generateCardEvents(awayTeam, awayYellowCards, random),
-    ...generateCardEvents(homeTeam, homeRedCards, random, "red-card"),
-    ...generateCardEvents(awayTeam, awayRedCards, random, "red-card"),
+    ...generateGoalEvents(homeTeam, homeSquad, homeGoals, random),
+    ...generateGoalEvents(awayTeam, awaySquad, awayGoals, random),
+    ...generateCardEvents(homeTeam, homeSquad, homeYellowCards, random),
+    ...generateCardEvents(awayTeam, awaySquad, awayYellowCards, random),
+    ...generateCardEvents(homeTeam, homeSquad, homeRedCards, random, "red-card"),
+    ...generateCardEvents(awayTeam, awaySquad, awayRedCards, random, "red-card"),
+    ...[homeInjury?.event, awayInjury?.event].filter(Boolean),
     {
       minute: 90,
       type: "full-time",
@@ -520,13 +607,16 @@ export function simulateMatch(homeTeam, awayTeam, homeTactics, awayTactics, seed
       redCards: { home: homeRedCards, away: awayRedCards },
     },
     events,
+    injuries,
   };
 
-  return attachPlayerPerformance(match, homeTeam, awayTeam, random);
+  return attachPlayerPerformance(match, homeTeam, homeSquad, awayTeam, awaySquad, random);
 }
 
-export function simulateKnockoutMatch(homeTeam, awayTeam, homeTactics, awayTactics, seed = "knockout", stage = "Knockout") {
-  const match = simulateMatch(homeTeam, awayTeam, homeTactics, awayTactics, seed);
+export function simulateKnockoutMatch(homeTeam, awayTeam, homeTactics, awayTactics, seed = "knockout", stage = "Knockout", options = {}) {
+  const match = simulateMatch(homeTeam, awayTeam, homeTactics, awayTactics, seed, options);
+  const homeSquad = resolveMatchSquad(homeTeam, options.homeLineup);
+  const awaySquad = resolveMatchSquad(awayTeam, options.awayLineup);
   const random = createSeededRandom(`${seed}-${stage}-resolution`);
   const normalTimeScore = { ...match.score };
   let resolution = "normal-time";
@@ -544,11 +634,11 @@ export function simulateKnockoutMatch(homeTeam, awayTeam, homeTactics, awayTacti
       if (homeTeam.overall + random() * 10 >= awayTeam.overall + random() * 10) {
         extraTime.home = 1;
         match.score.home += 1;
-        events.push(generateGoalEvent(homeTeam, minute, random, "extra-time-goal"));
+        events.push(generateGoalEvent(homeTeam, homeSquad, minute, random, "extra-time-goal"));
       } else {
         extraTime.away = 1;
         match.score.away += 1;
-        events.push(generateGoalEvent(awayTeam, minute, random, "extra-time-goal"));
+        events.push(generateGoalEvent(awayTeam, awaySquad, minute, random, "extra-time-goal"));
       }
     }
 
@@ -589,5 +679,5 @@ export function simulateKnockoutMatch(homeTeam, awayTeam, homeTactics, awayTacti
     },
   };
 
-  return attachPlayerPerformance(resolvedMatch, homeTeam, awayTeam, random, winner.code);
+  return attachPlayerPerformance(resolvedMatch, homeTeam, homeSquad, awayTeam, awaySquad, random, winner.code);
 }

@@ -11,12 +11,12 @@ const sizeClasses = {
 export default function Flag({ src, alt = "Team flag", size = "md", className = "" }) {
   const [failedSrc, setFailedSrc] = useState("");
   const sizeClass = sizeClasses[size] || sizeClasses.md;
-  const classes = `${sizeClass} shrink-0 rounded-sm border border-white/15 bg-white/[0.06] object-cover shadow-sm ${className}`.trim();
+  const classes = `${sizeClass} shrink-0 overflow-hidden rounded-md object-cover ring-1 ring-white/20 shadow-[0_2px_8px_rgba(0,0,0,0.45)] ${className}`.trim();
   const failed = Boolean(src && failedSrc === src);
 
   if (!src || failed) {
     return (
-      <span className={`grid place-items-center ${classes}`} aria-label={alt} role="img">
+      <span className={`grid place-items-center bg-white/[0.06] ${classes}`} aria-label={alt} role="img">
         <span className="h-2 w-2 rounded-full bg-pitch-300/80" />
       </span>
     );

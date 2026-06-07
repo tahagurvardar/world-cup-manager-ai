@@ -41,7 +41,7 @@ export default function NewsPage() {
 
   return (
     <>
-      <PageHeader title="News" description="Dynamic headlines generated from match results and rule-based post-match reports." />
+      <PageHeader icon={Newspaper} title="News" description="Dynamic headlines generated from match results and rule-based post-match reports." />
 
       <div className="grid gap-4">
         {news.map((item) => (

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { BarChart3, CircleUserRound, Shield, Trophy } from "lucide-react";
+import { BarChart3, CircleUserRound, Medal, Percent, Shield, Swords, Trophy } from "lucide-react";
 import Flag from "../components/Flag.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import Panel from "../components/Panel.jsx";
+import StatCard from "../components/StatCard.jsx";
 import { useAuth } from "../hooks/useAuth";
 import { fallbackDashboard } from "../data/sampleData";
 import { fetchDashboard } from "../services/gameService";
@@ -30,7 +31,15 @@ export default function ProfilePage() {
 
   return (
     <>
-      <PageHeader title="Profile" description="Manager account and current national team save context." />
+      <PageHeader icon={CircleUserRound} title="Manager Career" description="Manager account, current national team save context, and lifetime career record." />
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <StatCard label="Career Record" value={`${career.wins}-${career.draws}-${career.losses}`} detail="W · D · L" icon={Swords} className="animate-fade-in-up" />
+        <StatCard label="Tournaments" value={career.tournamentsPlayed} detail="Editions played" icon={Trophy} tone="blue" className="animate-fade-in-up animate-delay-1" />
+        <StatCard label="Best Finish" value={career.bestTournamentFinish} icon={Medal} tone="amber" className="animate-fade-in-up animate-delay-2" />
+        <StatCard label="Win Rate" value={`${career.winRate}%`} detail={`${career.gamesManaged} games managed`} icon={Percent} className="animate-fade-in-up animate-delay-3" />
+        <StatCard label="Trophies" value={career.trophiesWon} detail="World Cups lifted" icon={Trophy} tone="amber" className="animate-fade-in-up animate-delay-4" />
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel className="p-5">
@@ -78,20 +87,16 @@ export default function ProfilePage() {
               <BarChart3 size={28} />
             </span>
             <div>
-              <h2 className="text-xl font-semibold text-white">Manager Record</h2>
-              <p className="text-sm text-slate-400">Career performance across completed and active tournaments.</p>
+              <h2 className="text-xl font-semibold text-white">Current Save Detail</h2>
+              <p className="text-sm text-slate-400">Active tournament context and goal record.</p>
             </div>
           </div>
 
           <div className="mt-6 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
-            <Info label="Record" value={`${career.wins}W - ${career.draws}D - ${career.losses}L`} />
-            <Info label="Games Managed" value={career.gamesManaged} />
-            <Info label="Goals" value={`${career.goalsFor}-${career.goalsAgainst}`} />
-            <Info label="Win Rate" value={`${career.winRate}%`} />
             <Info label="Current Team" value={dashboard?.selectedTeam?.name || "No team selected"} />
             <Info label="Current Status" value={career.currentTournamentFinish} />
-            <Info label="Best Finish" value={career.bestTournamentFinish} />
-            <Info label="Trophies Won" value={career.trophiesWon} icon={Trophy} />
+            <Info label="Games Managed" value={career.gamesManaged} />
+            <Info label="Goals For/Against" value={`${career.goalsFor}-${career.goalsAgainst}`} />
           </div>
         </Panel>
       </div>

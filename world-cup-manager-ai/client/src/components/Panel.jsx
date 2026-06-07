@@ -1,7 +1,7 @@
-export default function Panel({ children, className = "" }) {
+export default function Panel({ children, className = "", hover = false, as: Tag = "section" }) {
   return (
-    <section className={`rounded-lg border border-white/10 bg-white/[0.045] shadow-panel ${className}`}>
+    <Tag className={`glass-card ${hover ? "glass-hover" : ""} ${className}`}>
       {children}
-    </section>
+    </Tag>
   );
 }

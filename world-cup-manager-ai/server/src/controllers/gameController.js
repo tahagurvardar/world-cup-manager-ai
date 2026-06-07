@@ -9,6 +9,24 @@ import {
   updateCurrentTournamentFinish,
 } from "../services/managerCareerService.js";
 import { buildTournamentAwards, buildTournamentPlayerStats } from "../services/playerStatsService.js";
+import { buildPlayerProfile } from "../services/playerProfileService.js";
+import {
+  buildAvailableLineup,
+  buildSquadFromInput,
+  decorateSquadSelection,
+  generateSquadSelection,
+  lineupPlayers,
+  normalizeFormation,
+  resolveSquadSelection,
+} from "../services/squadService.js";
+import {
+  availabilitySummary,
+  buildAvailabilityMap,
+  decrementActiveRecords,
+  injuryRecordsFromMatch,
+  processMatchCards,
+  unavailableIndexSet,
+} from "../services/availabilityService.js";
 import { getDefaultOpponentTactics, simulateKnockoutMatch, simulateMatch } from "../services/simulationService.js";
 import {
   buildTournamentSnapshot,
@@ -84,12 +102,20 @@ function getResultLoser(match) {
   return match.score.home > match.score.away ? match.teams.away : match.teams.home;
 }
 
-function createFixtureResult(fixture, selectedTeamCode, userTactics, seedSuffix, playedAt) {
+function buildLineupOptions(homeTeam, awayTeam, selectedTeamCode, userLineup) {
+  if (!userLineup) return {};
+  if (homeTeam.code === selectedTeamCode) return { homeLineup: userLineup };
+  if (awayTeam.code === selectedTeamCode) return { awayLineup: userLineup };
+  return {};
+}
+
+function createFixtureResult(fixture, selectedTeamCode, userTactics, seedSuffix, playedAt, userLineup) {
   const homeTeam = findTeamByCode(fixture.homeTeamCode);
   const awayTeam = findTeamByCode(fixture.awayTeamCode);
   const homeTactics = homeTeam.code === selectedTeamCode ? userTactics : getDefaultOpponentTactics(homeTeam);
   const awayTactics = awayTeam.code === selectedTeamCode ? userTactics : getDefaultOpponentTactics(awayTeam);
-  const simulated = simulateMatch(homeTeam, awayTeam, homeTactics, awayTactics, `${fixture.id}-${seedSuffix}`);
+  const lineupOptions = buildLineupOptions(homeTeam, awayTeam, selectedTeamCode, userLineup);
+  const simulated = simulateMatch(homeTeam, awayTeam, homeTactics, awayTactics, `${fixture.id}-${seedSuffix}`, lineupOptions);
 
   return {
     ...simulated,
@@ -103,11 +129,12 @@ function createFixtureResult(fixture, selectedTeamCode, userTactics, seedSuffix,
   };
 }
 
-function createKnockoutFixtureResult(fixture, selectedTeamCode, userTactics, seedSuffix, playedAt) {
+function createKnockoutFixtureResult(fixture, selectedTeamCode, userTactics, seedSuffix, playedAt, userLineup) {
   const homeTeam = findTeamByCode(fixture.homeTeamCode);
   const awayTeam = findTeamByCode(fixture.awayTeamCode);
   const homeTactics = homeTeam.code === selectedTeamCode ? userTactics : getDefaultOpponentTactics(homeTeam);
   const awayTactics = awayTeam.code === selectedTeamCode ? userTactics : getDefaultOpponentTactics(awayTeam);
+  const lineupOptions = buildLineupOptions(homeTeam, awayTeam, selectedTeamCode, userLineup);
   const simulated = simulateKnockoutMatch(
     homeTeam,
     awayTeam,
@@ -115,6 +142,7 @@ function createKnockoutFixtureResult(fixture, selectedTeamCode, userTactics, see
     awayTactics,
     `${fixture.id}-${seedSuffix}`,
     fixture.stageName,
+    lineupOptions,
   );
 
   return {
@@ -471,6 +499,12 @@ function buildDashboardPayload(state) {
   }
 
   const tactics = plainTactics(state.tactics);
+  const fifaRanking = [...teams].sort((a, b) => b.overall - a.overall).findIndex((team) => team.code === selectedTeam.code) + 1;
+  const squad = resolveSquadSelection(selectedTeam, state.squad, tactics.formation);
+  const { injuries: stateInjuries, suspensions: stateSuspensions } = getAvailabilityState(state);
+  const squadAvailabilityMap = buildAvailabilityMap(selectedTeam.code, stateInjuries, stateSuspensions);
+  const decoratedSquad = decorateSquadSelection(selectedTeam, squad, squadAvailabilityMap);
+  const squadAvailability = availabilitySummary(selectedTeam, stateInjuries, stateSuspensions);
   const nextFixture = getNextFixture(selectedTeam.code, state.results);
   const opponent = nextFixture ? getOpponent(nextFixture, selectedTeam.code) : null;
   const tournament = buildTournamentSnapshot(selectedTeam.code, state.results);
@@ -498,6 +532,7 @@ function buildDashboardPayload(state) {
       confederation: selectedTeam.confederation || selectedTeam.region,
       groupPosition: tournament.selectedTeamStatus?.groupPosition || null,
       qualificationStatus: tournament.selectedTeamStatus?.qualificationStatus || "Awaiting group matches",
+      fifaRanking,
     },
     nextMatch: withTeamNames(nextFixture),
     nextOpponent: opponent
@@ -528,12 +563,22 @@ function buildDashboardPayload(state) {
     form: selectedTeam.form,
     aiAdvice,
     tactics,
-    keyPlayers: [...selectedTeam.players].sort((a, b) => b.overall - a.overall).slice(0, 5),
+    formation: tactics.formation,
+    startingXI: decoratedSquad.startingXI,
+    bench: decoratedSquad.bench,
+    lineupOverall: decoratedSquad.lineupOverall,
+    captainIndex: decoratedSquad.captainIndex,
+    viceCaptainIndex: decoratedSquad.viceCaptainIndex,
+    keyPlayers: selectedTeam.players
+      .map((player, index) => ({ ...player, index, teamCode: selectedTeam.code }))
+      .sort((a, b) => b.overall - a.overall)
+      .slice(0, 5),
     recentResults: [...state.results]
       .filter((result) => result.teams.home.code === selectedTeam.code || result.teams.away.code === selectedTeam.code)
-      .slice(-3)
+      .slice(-5)
       .reverse(),
     latestNews: [...state.news].slice(-3).reverse(),
+    squadAvailability,
   };
 }
 
@@ -549,6 +594,9 @@ export async function selectTeam(req, res) {
   await ensureCompletedTournamentArchived(state);
   state.selectedTeamCode = team.code;
   state.tactics = { ...DEFAULT_TACTICS };
+  state.squad = generateSquadSelection(team, DEFAULT_TACTICS.formation);
+  state.markModified("squad");
+  resetAvailability(state);
   state.results = [];
   state.news = [];
   state.playerStats = { players: [], leaders: {} };
@@ -582,6 +630,9 @@ export async function startNewTournament(req, res) {
 
   state.selectedTeamCode = null;
   state.tactics = { ...DEFAULT_TACTICS };
+  state.squad = null;
+  state.markModified("squad");
+  resetAvailability(state);
   state.results = [];
   state.news = [];
   state.playerStats = { players: [], leaders: {} };
@@ -598,6 +649,145 @@ export async function startNewTournament(req, res) {
   });
 }
 
+function getAvailabilityState(state) {
+  return {
+    injuries: Array.isArray(state.injuries) ? state.injuries : [],
+    suspensions: Array.isArray(state.suspensions) ? state.suspensions : [],
+    yellows: state.accumulatedYellows && typeof state.accumulatedYellows === "object" ? state.accumulatedYellows : {},
+  };
+}
+
+function resetAvailability(state) {
+  state.injuries = [];
+  state.suspensions = [];
+  state.accumulatedYellows = {};
+  state.markModified("injuries");
+  state.markModified("suspensions");
+  state.markModified("accumulatedYellows");
+}
+
+function injuryArticle(injuryType) {
+  return /^[aeiou]/i.test(injuryType || "") ? "an" : "a";
+}
+
+function countManagerMatches(results, teamCode) {
+  return results.filter((result) => result.teams?.home?.code === teamCode || result.teams?.away?.code === teamCode).length;
+}
+
+function buildAvailabilityNews(team, lineupChanges, newInjuries, newSuspensions, availabilityMap) {
+  const createdAt = new Date().toISOString();
+  const teamRefs = [toTeamRef(team)].filter(Boolean);
+  const stamp = Date.now();
+  const news = [];
+
+  lineupChanges.forEach((change, position) => {
+    const detail = availabilityMap.get(change.out);
+    const reasonText = detail?.status === "suspended" ? "suspension" : "injury";
+    news.push({
+      id: `lineup-change-${change.out}-${stamp}-${position}`,
+      type: "lineup-change",
+      headline: `${team.name} forced into a lineup change`,
+      summary: `${change.outName} misses the match through ${reasonText}. ${change.inName} steps into the XI at ${change.position}.`,
+      teams: teamRefs,
+      createdAt,
+    });
+  });
+
+  newInjuries.forEach((injury, position) => {
+    const matchesLabel = `${injury.matchesOut} match${injury.matchesOut > 1 ? "es" : ""}`;
+    news.push({
+      id: `injury-${injury.index}-${stamp}-${position}`,
+      type: "injury",
+      headline: `${injury.playerName} picks up ${injuryArticle(injury.injuryType)} ${injury.injuryType}`,
+      summary: `${team.name}'s ${injury.playerName} suffered ${injuryArticle(injury.injuryType)} ${injury.injuryType} (${injury.severity}) and is expected to miss ${matchesLabel}.`,
+      teams: teamRefs,
+      createdAt,
+    });
+  });
+
+  newSuspensions.forEach((suspension, position) => {
+    news.push({
+      id: `suspension-${suspension.index}-${stamp}-${position}`,
+      type: "suspension",
+      headline: `${suspension.playerName} suspended for the next match`,
+      summary: `${team.name}'s ${suspension.playerName} will serve a one-match ban (${suspension.reason}).`,
+      teams: teamRefs,
+      createdAt,
+    });
+  });
+
+  return news;
+}
+
+// Computes the manager team's available lineup for the upcoming match, auto-replacing any
+// injured/suspended starters. Returns the resolved player lineup, forced changes, and the
+// pre-match availability map (used for news + UI).
+function resolveAvailableLineup(state, selectedTeam, selectedSquad) {
+  const { injuries, suspensions } = getAvailabilityState(state);
+  const availabilityMap = buildAvailabilityMap(selectedTeam.code, injuries, suspensions);
+  const unavailable = unavailableIndexSet(selectedTeam.code, injuries, suspensions);
+  const { startingXI: availableXI, changes } = buildAvailableLineup(
+    selectedTeam,
+    selectedSquad.startingXI,
+    selectedSquad.bench,
+    unavailable,
+  );
+  return {
+    availabilityMap,
+    lineupChanges: changes,
+    lineup: lineupPlayers(selectedTeam, availableXI),
+  };
+}
+
+// After the manager plays, decrements served injuries/suspensions, records new ones from
+// this match, persists the changes, and returns the generated availability news.
+function applyManagerAvailability(state, selectedTeam, managerMatch, lineupChanges, availabilityMap, nextResults) {
+  if (!managerMatch) return [];
+
+  const { injuries, suspensions, yellows } = getAvailabilityState(state);
+  decrementActiveRecords(injuries, suspensions, selectedTeam.code);
+
+  const baseMatch = countManagerMatches(nextResults, selectedTeam.code);
+  const newInjuries = injuryRecordsFromMatch(managerMatch, selectedTeam.code, baseMatch);
+  injuries.push(...newInjuries);
+
+  const { newSuspensions } = processMatchCards(managerMatch, selectedTeam.code, yellows);
+  suspensions.push(...newSuspensions);
+
+  state.injuries = injuries;
+  state.suspensions = suspensions;
+  state.accumulatedYellows = yellows;
+  state.markModified("injuries");
+  state.markModified("suspensions");
+  state.markModified("accumulatedYellows");
+
+  return buildAvailabilityNews(selectedTeam, lineupChanges, newInjuries, newSuspensions, availabilityMap);
+}
+
+function squadResponse(team, formation, squad, state) {
+  const { injuries, suspensions } = getAvailabilityState(state);
+  const availabilityMap = buildAvailabilityMap(team.code, injuries, suspensions);
+  const decorated = decorateSquadSelection(team, squad, availabilityMap);
+  return {
+    team: team.name,
+    teamCode: team.code,
+    flag: team.flag,
+    formation,
+    teamOverall: team.overall,
+    lineupOverall: decorated.lineupOverall,
+    captainIndex: decorated.captainIndex,
+    viceCaptainIndex: decorated.viceCaptainIndex,
+    availability: availabilitySummary(team, injuries, suspensions),
+    players: team.players.map((player, index) => ({
+      ...player,
+      index,
+      availability: availabilityMap.get(index) || { status: "available", label: "Available", matchesOut: 0 },
+    })),
+    startingXI: decorated.startingXI,
+    bench: decorated.bench,
+  };
+}
+
 export async function getSquad(req, res) {
   const state = await getOrCreateGameState(req.user._id);
   const team = state.selectedTeamCode ? findTeamByCode(state.selectedTeamCode) : null;
@@ -606,7 +796,93 @@ export async function getSquad(req, res) {
     return res.status(400).json({ message: "Select a national team first." });
   }
 
-  return res.json({ team: team.name, flag: team.flag, players: team.players });
+  const formation = plainTactics(state.tactics).formation;
+  const squad = resolveSquadSelection(team, state.squad, formation);
+  state.squad = squad;
+  state.markModified("squad");
+  await state.save();
+
+  return res.json(squadResponse(team, formation, squad, state));
+}
+
+function parsePlayerRouteId(rawId) {
+  if (!rawId) return null;
+  const separator = rawId.lastIndexOf("-");
+  if (separator <= 0) return null;
+  const teamCode = rawId.slice(0, separator).toUpperCase();
+  const index = Number(rawId.slice(separator + 1));
+  if (!Number.isInteger(index) || index < 0) return null;
+  return { teamCode, index };
+}
+
+export async function getPlayerProfile(req, res) {
+  const parsed = parsePlayerRouteId(req.params.playerId);
+  const team = parsed ? findTeamByCode(parsed.teamCode) : null;
+
+  if (!team || !team.players[parsed.index]) {
+    return res.status(404).json({ message: "Player not found." });
+  }
+
+  const state = await getOrCreateGameState(req.user._id);
+  const playerStats = state.playerStats?.players ? state.playerStats : buildTournamentPlayerStats(state.results);
+  const completedTournaments = normalizeTournamentHistory(state.tournamentHistory).length;
+
+  const profile = buildPlayerProfile({
+    team,
+    index: parsed.index,
+    results: state.results || [],
+    playerStats,
+    completedTournaments,
+  });
+
+  // Flag captaincy + availability when the player belongs to the manager's selected team.
+  if (state.selectedTeamCode === team.code) {
+    const squad = resolveSquadSelection(team, state.squad, plainTactics(state.tactics).formation);
+    profile.isCaptain = squad.captainIndex === parsed.index;
+    profile.isViceCaptain = squad.viceCaptainIndex === parsed.index;
+    profile.inStartingXI = squad.startingXI.some((entry) => entry.playerIndex === parsed.index);
+    profile.onBench = squad.bench.includes(parsed.index);
+    profile.isManagerTeam = true;
+
+    const { injuries, suspensions } = getAvailabilityState(state);
+    const map = buildAvailabilityMap(team.code, injuries, suspensions);
+    profile.availability = map.get(parsed.index) || { status: "available", label: "Available", matchesOut: 0 };
+  } else {
+    profile.availability = { status: "available", label: "Available", matchesOut: 0 };
+  }
+
+  return res.json({ profile });
+}
+
+export async function updateSquad(req, res) {
+  const state = await getOrCreateGameState(req.user._id);
+  const team = state.selectedTeamCode ? findTeamByCode(state.selectedTeamCode) : null;
+
+  if (!team) {
+    return res.status(400).json({ message: "Select a national team first." });
+  }
+
+  const formation = plainTactics(state.tactics).formation;
+  const squad = buildSquadFromInput(team, formation, req.body.startingXI, req.body.bench, req.body.captainIndex, req.body.viceCaptainIndex);
+  state.squad = squad;
+  state.markModified("squad");
+  await state.save();
+
+  return res.json({ message: "Squad updated.", ...squadResponse(team, formation, squad, state) });
+}
+
+export async function autoSquad(req, res) {
+  const state = await getOrCreateGameState(req.user._id);
+  const team = state.selectedTeamCode ? findTeamByCode(state.selectedTeamCode) : null;
+
+  if (!team) {
+    return res.status(400).json({ message: "Select a national team first." });
+  }
+
+  const formation = req.body.formation ? normalizeFormation(req.body.formation) : plainTactics(state.tactics).formation;
+  const squad = generateSquadSelection(team, formation);
+
+  return res.json({ message: "Suggested Starting XI generated.", ...squadResponse(team, formation, squad, state) });
 }
 
 export async function getTactics(req, res) {
@@ -616,7 +892,8 @@ export async function getTactics(req, res) {
 
 export async function updateTactics(req, res) {
   const state = await getOrCreateGameState(req.user._id);
-  const nextTactics = { ...plainTactics(state.tactics), ...req.body };
+  const previousTactics = plainTactics(state.tactics);
+  const nextTactics = { ...previousTactics, ...req.body };
 
   Object.entries(ALLOWED_TACTICS).forEach(([field, allowedValues]) => {
     if (!allowedValues.includes(nextTactics[field])) {
@@ -625,11 +902,21 @@ export async function updateTactics(req, res) {
   });
 
   state.tactics = nextTactics;
+
+  // Applying a new formation regenerates a default Starting XI/bench for that shape so
+  // the saved squad always matches the active formation's slots.
+  const team = state.selectedTeamCode ? findTeamByCode(state.selectedTeamCode) : null;
+  if (team && (nextTactics.formation !== previousTactics.formation || !state.squad)) {
+    state.squad = generateSquadSelection(team, nextTactics.formation);
+    state.markModified("squad");
+  }
+
   await state.save();
 
   return res.json({
     message: "Tactics updated.",
     tactics: plainTactics(state.tactics),
+    squad: team ? squadResponse(team, nextTactics.formation, resolveSquadSelection(team, state.squad, nextTactics.formation), state) : null,
   });
 }
 
@@ -644,6 +931,11 @@ export async function simulateNextMatch(req, res) {
   const globalMatchday = getNextGlobalMatchday(state.results);
   const userTactics = plainTactics(state.tactics);
   const playedAt = new Date().toISOString();
+  const selectedSquad = resolveSquadSelection(selectedTeam, state.squad, userTactics.formation);
+  state.squad = selectedSquad;
+  state.markModified("squad");
+  // Auto-replace injured/suspended starters before the match is played.
+  const { availabilityMap, lineupChanges, lineup: userLineup } = resolveAvailableLineup(state, selectedTeam, selectedSquad);
 
   if (!globalMatchday) {
     const tournamentBefore = buildTournamentSnapshot(selectedTeam.code, state.results);
@@ -656,7 +948,7 @@ export async function simulateNextMatch(req, res) {
     }
 
     const matches = nextKnockoutRound.fixtures.map((fixture, index) =>
-      createKnockoutFixtureResult(fixture, selectedTeam.code, userTactics, `${state.results.length}-${index}`, playedAt),
+      createKnockoutFixtureResult(fixture, selectedTeam.code, userTactics, `${state.results.length}-${index}`, playedAt, userLineup),
     );
     const managerMatch = matches.find(
       (match) => match.teams.home.code === selectedTeam.code || match.teams.away.code === selectedTeam.code,
@@ -668,9 +960,11 @@ export async function simulateNextMatch(req, res) {
     const tournamentAfter = buildTournamentSnapshot(selectedTeam.code, nextResults);
     const { playerStats, awards } = applyDerivedTournamentState(state, nextResults, tournamentAfter);
     applyManagerCareerProgress(state, managerMatch, selectedTeam.code, tournamentAfter);
+    const availabilityNews = applyManagerAvailability(state, selectedTeam, managerMatch, lineupChanges, availabilityMap, nextResults);
     const completionNews = archiveTournamentIfComplete(state, tournamentAfter, awards, selectedTeam);
     const news = [
       ...buildKnockoutNews(matches, managerMatch, report, tournamentAfter, selectedTeam.code, nextKnockoutRound.stageName),
+      ...availabilityNews,
       ...completionNews,
     ];
 
@@ -691,6 +985,7 @@ export async function simulateNextMatch(req, res) {
       report,
       headline,
       news,
+      lineupChanges,
       tournament: { ...tournamentAfter, playerStats, awards },
       dashboard: buildDashboardPayload(state),
     });
@@ -702,7 +997,7 @@ export async function simulateNextMatch(req, res) {
   }
 
   const matches = matchdayFixtures.map((fixture, index) =>
-    createFixtureResult(fixture, selectedTeam.code, userTactics, `${state.results.length}-${index}`, playedAt),
+    createFixtureResult(fixture, selectedTeam.code, userTactics, `${state.results.length}-${index}`, playedAt, userLineup),
   );
   const managerMatch = matches.find(
     (match) => match.teams.home.code === selectedTeam.code || match.teams.away.code === selectedTeam.code,
@@ -718,7 +1013,8 @@ export async function simulateNextMatch(req, res) {
   const tournamentAfter = buildTournamentSnapshot(selectedTeam.code, nextResults);
   const { playerStats, awards } = applyDerivedTournamentState(state, nextResults, tournamentAfter);
   applyManagerCareerProgress(state, managerMatch, selectedTeam.code, tournamentAfter);
-  const news = buildMatchdayNews(matches, managerMatch, report, tournamentAfter, selectedTeam.code);
+  const availabilityNews = applyManagerAvailability(state, selectedTeam, managerMatch, lineupChanges, availabilityMap, nextResults);
+  const news = [...buildMatchdayNews(matches, managerMatch, report, tournamentAfter, selectedTeam.code), ...availabilityNews];
 
   state.results.push(...matches);
   state.news.push(...news);
@@ -736,6 +1032,7 @@ export async function simulateNextMatch(req, res) {
     report,
     headline,
     news,
+    lineupChanges,
     tournament: { ...tournamentAfter, playerStats, awards },
     dashboard: buildDashboardPayload(state),
   });

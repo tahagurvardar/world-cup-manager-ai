@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Activity, BadgeAlert, Crosshair, Play, Star, Timer, Trophy } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Activity, BadgeAlert, Crosshair, HeartPulse, Play, Square, Star, Swords, Timer, Trophy, UserCog } from "lucide-react";
 import Flag from "../components/Flag.jsx";
 import LoadingState from "../components/LoadingState.jsx";
 import PageHeader from "../components/PageHeader.jsx";
@@ -7,6 +8,7 @@ import Panel from "../components/Panel.jsx";
 import { fallbackDashboard } from "../data/sampleData";
 import { fetchDashboard, simulateMatch } from "../services/gameService";
 import { getErrorMessage } from "../services/api";
+import { routeIdFromSimId } from "../utils/player";
 
 export default function MatchCenterPage() {
   const [dashboard, setDashboard] = useState(null);
@@ -67,15 +69,11 @@ export default function MatchCenterPage() {
   return (
     <>
       <PageHeader
+        icon={Swords}
         title="Match Center"
         description="Play the next group matchday or knockout round, highlight your fixture, and review the other results from the same stage."
         action={
-          <button
-            type="button"
-            onClick={handleSimulate}
-            disabled={simulating || !canSimulate}
-            className="inline-flex items-center gap-2 rounded-md bg-pitch-400 px-4 py-2.5 text-sm font-semibold text-ink-950 transition hover:bg-pitch-300 disabled:opacity-50"
-          >
+          <button type="button" onClick={handleSimulate} disabled={simulating || !canSimulate} className="btn-primary">
             <Play size={18} />
             {simulating ? "Simulating..." : simulateLabel}
           </button>
@@ -135,6 +133,21 @@ export default function MatchCenterPage() {
                 <p className="mt-3 text-sm text-pitch-100">{simulation.headline}</p>
               </div>
 
+              {simulation.lineupChanges?.length ? (
+                <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-500/[0.08] p-4">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-amber-100">
+                    <UserCog size={16} className="text-amber-300" /> Forced lineup changes
+                  </p>
+                  <div className="mt-2 space-y-1.5">
+                    {simulation.lineupChanges.map((change) => (
+                      <p key={`${change.out}-${change.in}`} className="text-sm text-slate-200">
+                        <span className="font-medium text-white">{change.inName}</span> replaced <span className="text-slate-400 line-through">{change.outName}</span> at {change.position}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <Metric icon={Activity} label="Possession" value={`${match.stats.possession.home}% - ${match.stats.possession.away}%`} />
                 <Metric icon={Crosshair} label="xG" value={`${match.stats.xG.home} - ${match.stats.xG.away}`} />
@@ -158,9 +171,9 @@ export default function MatchCenterPage() {
                   <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">Timeline</h3>
                   <div className="mt-3 max-h-[420px] space-y-2 overflow-y-auto pr-2">
                     {match.events.map((event, index) => (
-                      <div key={`${event.minute}-${event.description}-${index}`} className="flex gap-3 rounded-md bg-white/[0.04] p-3 text-sm">
+                      <div key={`${event.minute}-${event.description}-${index}`} className={`flex gap-3 rounded-md p-3 text-sm ${timelineRowClass(event.type)}`}>
                         <span className="flex items-center gap-1 font-semibold text-pitch-100">
-                          <Timer size={15} />
+                          <TimelineIcon type={event.type} />
                           {event.minute}'
                         </span>
                         <p className="text-slate-300">{event.description}</p>
@@ -307,12 +320,18 @@ function RatingsTable({ title, ratings }) {
           </thead>
           <tbody className="divide-y divide-white/[0.08]">
             {ratings.map((rating) => (
-              <tr key={rating.playerId}>
-                <td className="py-2 pr-3 font-medium text-white">{rating.name}</td>
+              <tr key={rating.playerId} className="transition hover:bg-white/[0.03]">
+                <td className="py-2 pr-3 font-medium text-white">
+                  <PlayerLink simId={rating.playerId} name={rating.name} />
+                </td>
                 <td className="py-2 pr-3 text-slate-400">{rating.position}</td>
                 <td className="py-2 pr-3 text-slate-300">{rating.goals}</td>
                 <td className="py-2 pr-3 text-slate-300">{rating.assists}</td>
-                <td className="py-2 text-right font-semibold text-pitch-100">{rating.rating.toFixed(1)}</td>
+                <td className="py-2 text-right">
+                  <span className={`inline-grid min-w-[2.4rem] place-items-center rounded-md px-2 py-0.5 text-xs font-bold ${ratingClass(rating.rating)}`}>
+                    {rating.rating.toFixed(1)}
+                  </span>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -320,6 +339,36 @@ function RatingsTable({ title, ratings }) {
       </div>
     </div>
   );
+}
+
+function PlayerLink({ simId, name }) {
+  const routeId = routeIdFromSimId(simId);
+  if (!routeId) return <span>{name}</span>;
+  return (
+    <Link to={`/player/${routeId}`} className="transition hover:text-pitch-100 hover:underline">
+      {name}
+    </Link>
+  );
+}
+
+function TimelineIcon({ type }) {
+  if (type === "injury") return <HeartPulse size={15} className="text-red-300" />;
+  if (type === "red-card") return <Square size={13} className="fill-red-500 text-red-500" />;
+  if (type === "yellow-card") return <Square size={13} className="fill-amber-400 text-amber-400" />;
+  return <Timer size={15} />;
+}
+
+function timelineRowClass(type) {
+  if (type === "injury") return "border border-red-400/20 bg-red-500/[0.06]";
+  if (type === "red-card") return "border border-red-400/20 bg-red-500/[0.06]";
+  return "bg-white/[0.04]";
+}
+
+function ratingClass(rating) {
+  if (rating >= 8) return "bg-pitch-500/25 text-pitch-100 ring-1 ring-pitch-400/30";
+  if (rating >= 7) return "bg-emerald-500/15 text-emerald-200";
+  if (rating >= 6) return "bg-amber-400/15 text-amber-200";
+  return "bg-red-500/15 text-red-200";
 }
 
 function getTeamRatings(match, teamCode) {
