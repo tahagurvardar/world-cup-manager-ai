@@ -357,15 +357,24 @@ function FinalSummaryTab({ tournament, finalSummary, onStartNewTournament, reset
               <p className="text-sm text-slate-400">The final standings are confirmed.</p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onStartNewTournament}
-            disabled={resetting}
-            className="inline-flex items-center justify-center gap-2 rounded-md border border-pitch-300/25 bg-pitch-400/10 px-4 py-2.5 text-sm font-semibold text-pitch-100 transition hover:bg-pitch-400/15 disabled:opacity-50"
-          >
-            <RotateCcw size={17} />
-            {resetting ? "Resetting..." : "Start New Tournament"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to="/champions"
+              className="inline-flex items-center justify-center gap-2 rounded-md border border-amber-300/25 bg-amber-400/10 px-4 py-2.5 text-sm font-semibold text-amber-100 transition hover:bg-amber-400/15"
+            >
+              <Trophy size={17} />
+              Trophy Celebration
+            </Link>
+            <button
+              type="button"
+              onClick={onStartNewTournament}
+              disabled={resetting}
+              className="inline-flex items-center justify-center gap-2 rounded-md border border-pitch-300/25 bg-pitch-400/10 px-4 py-2.5 text-sm font-semibold text-pitch-100 transition hover:bg-pitch-400/15 disabled:opacity-50"
+            >
+              <RotateCcw size={17} />
+              {resetting ? "Resetting..." : "Start New Tournament"}
+            </button>
+          </div>
         </div>
 
         {resetError ? <p className="mb-4 rounded-md border border-red-400/25 bg-red-500/10 px-3 py-2 text-sm text-red-200">{resetError}</p> : null}
@@ -503,6 +512,11 @@ function BracketMatch({ match }) {
         <span>{match.id}</span>
         <StatusPill tone={played ? "green" : "slate"}>{played ? "Played" : "Scheduled"}</StatusPill>
       </div>
+      {match.city || match.country ? (
+        <p className="mb-2 text-xs text-slate-500">
+          {[match.stadiumName || match.venue, [match.city, match.country].filter(Boolean).join(", ")].filter(Boolean).join(" - ")}
+        </p>
+      ) : null}
       <BracketTeam
         name={match.awayTeam || match.awaySeed}
         flag={match.awayFlag}

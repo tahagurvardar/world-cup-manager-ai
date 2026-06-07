@@ -4,12 +4,14 @@ import {
   getDashboard,
   getNews,
   getPlayerProfile,
+  getPressConference,
   getSquad,
   getTactics,
   getTournament,
   selectTeam,
   simulateNextMatch,
   startNewTournament,
+  submitPressConference,
   updateSquad,
   updateTactics,
 } from "../controllers/gameController.js";
@@ -27,6 +29,8 @@ router.get("/squad", asyncHandler(getSquad));
 router.put("/squad", asyncHandler(updateSquad));
 router.post("/squad/auto", asyncHandler(autoSquad));
 router.get("/player/:playerId", asyncHandler(getPlayerProfile));
+router.get("/press-conference", asyncHandler(getPressConference));
+router.post("/press-conference", asyncHandler(submitPressConference));
 router.get("/tactics", asyncHandler(getTactics));
 router.put("/tactics", asyncHandler(updateTactics));
 router.post("/simulate", asyncHandler(simulateNextMatch));

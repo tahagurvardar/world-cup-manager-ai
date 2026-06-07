@@ -1,10 +1,12 @@
 import { DEFAULT_TACTICS, GameState } from "../models/GameState.js";
+import { weatherSimulationModifier } from "../data/atmosphere.js";
 import { findTeamByCode, teams } from "../data/teams.js";
 import { generateMatchReport, generateNewsHeadline, generateTacticalAdvice } from "../services/aiService.js";
 import {
   archiveCompletedTournament,
   applyManagerMatchResult,
   normalizeManagerCareer,
+  normalizeAchievements,
   normalizeTournamentHistory,
   updateCurrentTournamentFinish,
 } from "../services/managerCareerService.js";
@@ -28,6 +30,16 @@ import {
   unavailableIndexSet,
 } from "../services/availabilityService.js";
 import { getDefaultOpponentTactics, simulateKnockoutMatch, simulateMatch } from "../services/simulationService.js";
+import {
+  applyConferenceAnswers,
+  buildConferenceNews,
+  DEFAULT_MEDIA,
+  generatePostConference,
+  generatePreConference,
+  mediaMatchModifier,
+  mediaTrends,
+  normalizeMedia,
+} from "../services/pressConferenceService.js";
 import {
   buildTournamentSnapshot,
   getMatchdayFixtures,
@@ -102,39 +114,59 @@ function getResultLoser(match) {
   return match.score.home > match.score.away ? match.teams.away : match.teams.home;
 }
 
-function buildLineupOptions(homeTeam, awayTeam, selectedTeamCode, userLineup) {
-  if (!userLineup) return {};
-  if (homeTeam.code === selectedTeamCode) return { homeLineup: userLineup };
-  if (awayTeam.code === selectedTeamCode) return { awayLineup: userLineup };
-  return {};
+function buildLineupOptions(homeTeam, awayTeam, selectedTeamCode, userLineup, userModifier, atmosphereModifier) {
+  const options = atmosphereModifier ? { atmosphereModifier } : {};
+  if (homeTeam.code === selectedTeamCode) {
+    if (userLineup) options.homeLineup = userLineup;
+    if (userModifier) options.homeModifier = userModifier;
+  } else if (awayTeam.code === selectedTeamCode) {
+    if (userLineup) options.awayLineup = userLineup;
+    if (userModifier) options.awayModifier = userModifier;
+  }
+  return options;
 }
 
-function createFixtureResult(fixture, selectedTeamCode, userTactics, seedSuffix, playedAt, userLineup) {
+function fixtureAtmosphereFields(fixture) {
+  return {
+    stadiumName: fixture.stadiumName || fixture.venue || "Tournament stadium",
+    venue: fixture.stadiumName || fixture.venue || "Tournament stadium",
+    city: fixture.city || null,
+    country: fixture.country || null,
+    capacity: fixture.capacity || null,
+    attendance: fixture.attendance || null,
+    weather: fixture.weather || null,
+    referee: fixture.referee || null,
+  };
+}
+
+function createFixtureResult(fixture, selectedTeamCode, userTactics, seedSuffix, playedAt, userLineup, userModifier) {
   const homeTeam = findTeamByCode(fixture.homeTeamCode);
   const awayTeam = findTeamByCode(fixture.awayTeamCode);
   const homeTactics = homeTeam.code === selectedTeamCode ? userTactics : getDefaultOpponentTactics(homeTeam);
   const awayTactics = awayTeam.code === selectedTeamCode ? userTactics : getDefaultOpponentTactics(awayTeam);
-  const lineupOptions = buildLineupOptions(homeTeam, awayTeam, selectedTeamCode, userLineup);
+  const atmosphereModifier = weatherSimulationModifier(fixture.weather);
+  const lineupOptions = buildLineupOptions(homeTeam, awayTeam, selectedTeamCode, userLineup, userModifier, atmosphereModifier);
   const simulated = simulateMatch(homeTeam, awayTeam, homeTactics, awayTactics, `${fixture.id}-${seedSuffix}`, lineupOptions);
 
   return {
     ...simulated,
+    ...fixtureAtmosphereFields(fixture),
     fixtureId: fixture.id,
     stage: fixture.stage,
     group: fixture.group,
     matchday: fixture.matchday,
     globalMatchday: fixture.globalMatchday,
-    venue: fixture.venue,
     playedAt,
   };
 }
 
-function createKnockoutFixtureResult(fixture, selectedTeamCode, userTactics, seedSuffix, playedAt, userLineup) {
+function createKnockoutFixtureResult(fixture, selectedTeamCode, userTactics, seedSuffix, playedAt, userLineup, userModifier) {
   const homeTeam = findTeamByCode(fixture.homeTeamCode);
   const awayTeam = findTeamByCode(fixture.awayTeamCode);
   const homeTactics = homeTeam.code === selectedTeamCode ? userTactics : getDefaultOpponentTactics(homeTeam);
   const awayTactics = awayTeam.code === selectedTeamCode ? userTactics : getDefaultOpponentTactics(awayTeam);
-  const lineupOptions = buildLineupOptions(homeTeam, awayTeam, selectedTeamCode, userLineup);
+  const atmosphereModifier = weatherSimulationModifier(fixture.weather);
+  const lineupOptions = buildLineupOptions(homeTeam, awayTeam, selectedTeamCode, userLineup, userModifier, atmosphereModifier);
   const simulated = simulateKnockoutMatch(
     homeTeam,
     awayTeam,
@@ -147,6 +179,7 @@ function createKnockoutFixtureResult(fixture, selectedTeamCode, userTactics, see
 
   return {
     ...simulated,
+    ...fixtureAtmosphereFields(fixture),
     fixtureId: fixture.id,
     stage: fixture.stage,
     stageName: fixture.stageName,
@@ -159,6 +192,64 @@ function createKnockoutFixtureResult(fixture, selectedTeamCode, userTactics, see
 function formatManOfTheMatch(match) {
   if (!match?.manOfTheMatch) return "TBD";
   return `${match.manOfTheMatch.name} (${match.manOfTheMatch.rating})`;
+}
+
+function formatAttendance(attendance) {
+  return Number(attendance || 0).toLocaleString("en-US");
+}
+
+function formatWeather(weather) {
+  if (!weather) return "Weather TBD";
+  if (weather.label) return weather.label;
+  return `${weather.condition || "Weather"} ${weather.temperatureC ?? ""}\u00b0C`.trim();
+}
+
+function matchStageForAtmosphere(match) {
+  if (match.stage === "group") return match.group ? `Group ${match.group} matchday` : "group match";
+  if (match.stage === "quarterFinal") return "quarter-final";
+  if (match.stage === "semiFinal") return "semi-final";
+  if (match.stage === "thirdPlace") return "third-place match";
+  if (match.stage === "final") return "final";
+  return (match.stageName || "match").toLowerCase();
+}
+
+function buildAtmosphereNews(matches, preferredMatch, createdAt) {
+  const news = [];
+  const featured = preferredMatch || matches[0];
+
+  if (featured?.attendance && featured.city) {
+    news.push({
+      id: `${featured.fixtureId}-attendance-${Date.now()}`,
+      type: "match-atmosphere",
+      headline: `${formatAttendance(featured.attendance)} expected in ${featured.city}`,
+      summary: `${featured.stadiumName || featured.venue} hosts ${featured.teams.home.name} vs ${featured.teams.away.name} in ${featured.city}, ${featured.country}. Weather: ${formatWeather(featured.weather)}. Referee: ${featured.referee?.name || "TBD"}.`,
+      matchId: featured.fixtureId,
+      teams: getMatchTeamRefs(featured),
+      createdAt,
+    });
+  }
+
+  const weatherCandidates = [preferredMatch, ...matches].filter(Boolean);
+  const weatherMatch = weatherCandidates.find((match) => ["Rain", "Hot", "Windy", "Cold"].includes(match.weather?.condition));
+  if (weatherMatch) {
+    const condition = weatherMatch.weather.condition;
+    const headline =
+      condition === "Rain"
+        ? `Heavy rain expected before ${matchStageForAtmosphere(weatherMatch)}`
+        : `${condition} conditions expected in ${weatherMatch.city}`;
+
+    news.push({
+      id: `${weatherMatch.fixtureId}-weather-${Date.now()}`,
+      type: "weather-watch",
+      headline,
+      summary: `${formatWeather(weatherMatch.weather)} is forecast at ${weatherMatch.stadiumName || weatherMatch.venue} in ${weatherMatch.city}, ${weatherMatch.country}.`,
+      matchId: weatherMatch.fixtureId,
+      teams: getMatchTeamRefs(weatherMatch),
+      createdAt,
+    });
+  }
+
+  return news;
 }
 
 function buildTournamentPayload(state) {
@@ -174,6 +265,7 @@ function buildTournamentPayload(state) {
     playerStats,
     awards,
     managerCareer,
+    achievements: normalizeAchievements(state.achievements),
     tournamentHistory: normalizeTournamentHistory(state.tournamentHistory),
   };
 }
@@ -255,6 +347,7 @@ function archiveTournamentIfComplete(state, tournamentAfter, awards, selectedTea
   const archived = archiveCompletedTournament({
     career: state.managerCareer,
     history: state.tournamentHistory,
+    achievements: state.achievements,
     tournament: tournamentAfter,
     selectedTeam,
     awards,
@@ -262,9 +355,11 @@ function archiveTournamentIfComplete(state, tournamentAfter, awards, selectedTea
 
   state.managerCareer = archived.career;
   state.tournamentHistory = archived.history;
+  state.achievements = archived.achievements;
   state.currentTournamentArchived = true;
   state.markModified("managerCareer");
   state.markModified("tournamentHistory");
+  state.markModified("achievements");
 
   return buildTournamentCompletionNews(tournamentAfter, awards, selectedTeam.code);
 }
@@ -301,6 +396,7 @@ function buildMatchdayNews(matches, managerMatch, managerReport, tournamentAfter
       teams: getMatchTeamRefs(managerMatch),
       createdAt,
     },
+    ...buildAtmosphereNews(matches, managerMatch, createdAt),
   ];
 
   const upsets = matches
@@ -377,7 +473,7 @@ function buildMatchdayNews(matches, managerMatch, managerReport, tournamentAfter
 
 function buildKnockoutNews(matches, managerMatch, featuredReport, tournamentAfter, selectedTeamCode, roundLabel) {
   const createdAt = new Date().toISOString();
-  const news = [];
+  const news = [...buildAtmosphereNews(matches, managerMatch || matches[0], createdAt)];
 
   if (managerMatch) {
     news.push({
@@ -478,7 +574,11 @@ function buildKnockoutNews(matches, managerMatch, featuredReport, tournamentAfte
 function buildDashboardPayload(state) {
   const selectedTeam = state.selectedTeamCode ? findTeamByCode(state.selectedTeamCode) : null;
   const baseCareer = normalizeManagerCareer(state.managerCareer);
+  const achievements = normalizeAchievements(state.achievements);
+  const latestAchievement = achievements[achievements.length - 1] || null;
   const tournamentHistory = normalizeTournamentHistory(state.tournamentHistory);
+  const latestTournament = tournamentHistory[tournamentHistory.length - 1] || null;
+  const lastTournamentWon = Boolean(latestTournament?.selectedTeamCode && latestTournament.selectedTeamFinish === "World Cup Champions");
 
   if (!selectedTeam) {
     return {
@@ -494,6 +594,9 @@ function buildDashboardPayload(state) {
         flag,
       })),
       managerCareer: { ...baseCareer, currentTournamentFinish: "Awaiting team selection" },
+      achievements,
+      latestAchievement,
+      lastTournamentWon,
       tournamentHistory,
     };
   }
@@ -505,6 +608,9 @@ function buildDashboardPayload(state) {
   const squadAvailabilityMap = buildAvailabilityMap(selectedTeam.code, stateInjuries, stateSuspensions);
   const decoratedSquad = decorateSquadSelection(selectedTeam, squad, squadAvailabilityMap);
   const squadAvailability = availabilitySummary(selectedTeam, stateInjuries, stateSuspensions);
+  const media = getMediaState(state);
+  const adjustedMorale = Math.max(1, Math.min(99, selectedTeam.morale + media.moraleBoost));
+  const pressConferencePending = Boolean(state.pendingConference && !state.pendingConference.answered);
   const nextFixture = getNextFixture(selectedTeam.code, state.results);
   const opponent = nextFixture ? getOpponent(nextFixture, selectedTeam.code) : null;
   const tournament = buildTournamentSnapshot(selectedTeam.code, state.results);
@@ -525,7 +631,7 @@ function buildDashboardPayload(state) {
       name: selectedTeam.name,
       group: selectedTeam.group,
       overall: selectedTeam.overall,
-      morale: selectedTeam.morale,
+      morale: adjustedMorale,
       form: selectedTeam.form,
       style: selectedTeam.style,
       flag: selectedTeam.flag,
@@ -547,6 +653,9 @@ function buildDashboardPayload(state) {
     tournamentStage: tournament.currentStage,
     routeToFinal: tournament.routeToFinal,
     managerCareer,
+    achievements,
+    latestAchievement,
+    lastTournamentWon,
     tournamentHistory,
     canSimulate: Boolean(tournament.nextGlobalMatchday || tournament.nextKnockoutRound),
     nextKnockoutRound: tournament.nextKnockoutRound
@@ -559,7 +668,7 @@ function buildDashboardPayload(state) {
     currentGlobalMatchday: tournament.nextGlobalMatchday,
     qualificationStatus: tournament.selectedTeamStatus?.qualificationStatus || "Awaiting group matches",
     groupPosition: tournament.selectedTeamStatus?.groupPosition || null,
-    morale: selectedTeam.morale,
+    morale: adjustedMorale,
     form: selectedTeam.form,
     aiAdvice,
     tactics,
@@ -579,6 +688,8 @@ function buildDashboardPayload(state) {
       .reverse(),
     latestNews: [...state.news].slice(-3).reverse(),
     squadAvailability,
+    media: { ...media, trends: mediaTrends(media) },
+    pressConferencePending,
   };
 }
 
@@ -597,6 +708,7 @@ export async function selectTeam(req, res) {
   state.squad = generateSquadSelection(team, DEFAULT_TACTICS.formation);
   state.markModified("squad");
   resetAvailability(state);
+  resetMedia(state);
   state.results = [];
   state.news = [];
   state.playerStats = { players: [], leaders: {} };
@@ -633,6 +745,7 @@ export async function startNewTournament(req, res) {
   state.squad = null;
   state.markModified("squad");
   resetAvailability(state);
+  resetMedia(state);
   state.results = [];
   state.news = [];
   state.playerStats = { players: [], leaders: {} };
@@ -664,6 +777,89 @@ function resetAvailability(state) {
   state.markModified("injuries");
   state.markModified("suspensions");
   state.markModified("accumulatedYellows");
+}
+
+function getMediaState(state) {
+  return normalizeMedia(state.media || DEFAULT_MEDIA);
+}
+
+function resetMedia(state) {
+  state.media = { ...DEFAULT_MEDIA, previous: { ...DEFAULT_MEDIA.previous } };
+  state.pressConferences = [];
+  state.pendingConference = null;
+  state.lastPreConferenceFixtureId = null;
+  state.markModified("media");
+  state.markModified("pressConferences");
+  state.markModified("pendingConference");
+}
+
+// Outcome of the manager's most recent played match: "win" | "loss" | "draw" | null.
+function lastManagerOutcome(results, teamCode) {
+  const last = [...results].reverse().find((result) => result.teams?.home?.code === teamCode || result.teams?.away?.code === teamCode);
+  if (!last) return null;
+  if (last.knockout?.winnerTeam?.code) return last.knockout.winnerTeam.code === teamCode ? "win" : "loss";
+  const isHome = last.teams.home.code === teamCode;
+  const teamGoals = isHome ? last.score.home : last.score.away;
+  const oppGoals = isHome ? last.score.away : last.score.home;
+  if (teamGoals > oppGoals) return "win";
+  if (teamGoals < oppGoals) return "loss";
+  return "draw";
+}
+
+// Builds a pre-match press conference for the manager's next fixture using live context.
+function buildPreConference(state, selectedTeam, nextFixture) {
+  if (!nextFixture) return null;
+  const opponent = getOpponent(nextFixture, selectedTeam.code);
+  const tournament = buildTournamentSnapshot(selectedTeam.code, state.results);
+  const stageLabel = nextFixture.stageName || (nextFixture.group ? `Group ${nextFixture.group} matchday` : tournament.currentStage || "the next match");
+
+  const { injuries, suspensions } = getAvailabilityState(state);
+  const availabilityMap = buildAvailabilityMap(selectedTeam.code, injuries, suspensions);
+  const squad = resolveSquadSelection(selectedTeam, state.squad, plainTactics(state.tactics).formation);
+  let injuredName = null;
+  let suspendedName = null;
+  let suspendedIsCaptain = false;
+  availabilityMap.forEach((detail, index) => {
+    const player = selectedTeam.players[index];
+    if (!player) return;
+    if (detail.status === "injured" && !injuredName) injuredName = player.name;
+    if (detail.status === "suspended" && !suspendedName) {
+      suspendedName = player.name;
+      suspendedIsCaptain = squad.captainIndex === index;
+    }
+  });
+
+  const conference = generatePreConference({
+    team: selectedTeam,
+    opponent,
+    stageLabel,
+    lastOutcome: lastManagerOutcome(state.results, selectedTeam.code),
+    injuredName,
+    suspendedName,
+    suspendedIsCaptain,
+    media: getMediaState(state),
+    fixtureId: nextFixture.id,
+  });
+  return { ...conference, opponentName: opponent?.name || null };
+}
+
+function pressConferencePayload(state, selectedTeam) {
+  const media = getMediaState(state);
+  const base = {
+    media: { ...media, trends: mediaTrends(media) },
+    history: [...(state.pressConferences || [])].slice(-6).reverse(),
+  };
+
+  const pending = state.pendingConference && !state.pendingConference.answered ? state.pendingConference : null;
+  if (pending) return { ...base, conference: pending };
+
+  const nextFixture = getNextFixture(selectedTeam.code, state.results);
+  if (nextFixture && state.lastPreConferenceFixtureId !== nextFixture.id) {
+    const conference = buildPreConference(state, selectedTeam, nextFixture);
+    return { ...base, conference, generated: true };
+  }
+
+  return { ...base, conference: null };
 }
 
 function injuryArticle(injuryType) {
@@ -762,6 +958,25 @@ function applyManagerAvailability(state, selectedTeam, managerMatch, lineupChang
   state.markModified("accumulatedYellows");
 
   return buildAvailabilityNews(selectedTeam, lineupChanges, newInjuries, newSuspensions, availabilityMap);
+}
+
+// Queues a post-match press conference for the manager and reopens pre-match conferences
+// for the next fixture.
+function queuePostConference(state, selectedTeam, managerMatch) {
+  if (!managerMatch) return;
+  const stageLabel = managerMatch.stageName || (managerMatch.group ? `Group ${managerMatch.group} matchday` : "the match");
+  const conference = generatePostConference({
+    team: selectedTeam,
+    match: managerMatch,
+    stageLabel,
+    fixtureId: managerMatch.fixtureId,
+  });
+  const isHome = managerMatch.teams.home.code === selectedTeam.code;
+  conference.opponentName = isHome ? managerMatch.teams.away.name : managerMatch.teams.home.name;
+
+  state.pendingConference = { ...conference, answered: false };
+  state.lastPreConferenceFixtureId = null;
+  state.markModified("pendingConference");
 }
 
 function squadResponse(team, formation, squad, state) {
@@ -885,6 +1100,82 @@ export async function autoSquad(req, res) {
   return res.json({ message: "Suggested Starting XI generated.", ...squadResponse(team, formation, squad, state) });
 }
 
+export async function getPressConference(req, res) {
+  const state = await getOrCreateGameState(req.user._id);
+  const team = state.selectedTeamCode ? findTeamByCode(state.selectedTeamCode) : null;
+
+  if (!team) {
+    return res.status(400).json({ message: "Select a national team first." });
+  }
+
+  const payload = pressConferencePayload(state, team);
+
+  // Persist a freshly generated pre-match conference so question ids stay stable on submit.
+  if (payload.generated && payload.conference) {
+    state.pendingConference = { ...payload.conference, answered: false };
+    state.lastPreConferenceFixtureId = payload.conference.fixtureId || null;
+    state.markModified("pendingConference");
+    await state.save();
+  }
+
+  return res.json(payload);
+}
+
+export async function submitPressConference(req, res) {
+  const state = await getOrCreateGameState(req.user._id);
+  const team = state.selectedTeamCode ? findTeamByCode(state.selectedTeamCode) : null;
+
+  if (!team) {
+    return res.status(400).json({ message: "Select a national team first." });
+  }
+
+  const conference = state.pendingConference;
+  if (!conference || conference.answered) {
+    return res.status(400).json({ message: "There is no active press conference to answer." });
+  }
+
+  const answers = req.body.answers && typeof req.body.answers === "object" ? req.body.answers : {};
+  const result = applyConferenceAnswers(state.media, normalizeManagerCareer(state.managerCareer), conference, answers);
+  const news = buildConferenceNews(team, conference, result, conference.opponentName || null);
+
+  state.media = result.media;
+  state.managerCareer = result.career;
+  state.news.push(...news);
+  const conferenceSummary = {
+    id: conference.id,
+    type: conference.type,
+    stageLabel: conference.stageLabel,
+    subtitle: conference.subtitle,
+    dominantTone: result.dominantTone,
+    reaction: result.reaction,
+    effects: result.effects,
+    answeredAt: new Date().toISOString(),
+  };
+  state.pressConferences = [
+    ...(Array.isArray(state.pressConferences) ? state.pressConferences : []),
+    conferenceSummary,
+  ];
+  state.pendingConference = null;
+  state.markModified("media");
+  state.markModified("managerCareer");
+  state.markModified("news");
+  state.markModified("pressConferences");
+  state.markModified("pendingConference");
+  await state.save();
+
+  const media = normalizeMedia(state.media);
+  return res.json({
+    message: "Press conference complete.",
+    media: { ...media, trends: mediaTrends(media) },
+    effects: result.effects,
+    reaction: result.reaction,
+    dominantTone: result.dominantTone,
+    history: [...state.pressConferences].slice(-6).reverse(),
+    news,
+    dashboard: buildDashboardPayload(state),
+  });
+}
+
 export async function getTactics(req, res) {
   const state = await getOrCreateGameState(req.user._id);
   return res.json({ tactics: plainTactics(state.tactics) });
@@ -936,6 +1227,8 @@ export async function simulateNextMatch(req, res) {
   state.markModified("squad");
   // Auto-replace injured/suspended starters before the match is played.
   const { availabilityMap, lineupChanges, lineup: userLineup } = resolveAvailableLineup(state, selectedTeam, selectedSquad);
+  // Subtle media/morale modifier shaped by press-conference answers.
+  const userModifier = mediaMatchModifier(getMediaState(state));
 
   if (!globalMatchday) {
     const tournamentBefore = buildTournamentSnapshot(selectedTeam.code, state.results);
@@ -948,7 +1241,7 @@ export async function simulateNextMatch(req, res) {
     }
 
     const matches = nextKnockoutRound.fixtures.map((fixture, index) =>
-      createKnockoutFixtureResult(fixture, selectedTeam.code, userTactics, `${state.results.length}-${index}`, playedAt, userLineup),
+      createKnockoutFixtureResult(fixture, selectedTeam.code, userTactics, `${state.results.length}-${index}`, playedAt, userLineup, userModifier),
     );
     const managerMatch = matches.find(
       (match) => match.teams.home.code === selectedTeam.code || match.teams.away.code === selectedTeam.code,
@@ -961,6 +1254,7 @@ export async function simulateNextMatch(req, res) {
     const { playerStats, awards } = applyDerivedTournamentState(state, nextResults, tournamentAfter);
     applyManagerCareerProgress(state, managerMatch, selectedTeam.code, tournamentAfter);
     const availabilityNews = applyManagerAvailability(state, selectedTeam, managerMatch, lineupChanges, availabilityMap, nextResults);
+    queuePostConference(state, selectedTeam, managerMatch);
     const completionNews = archiveTournamentIfComplete(state, tournamentAfter, awards, selectedTeam);
     const news = [
       ...buildKnockoutNews(matches, managerMatch, report, tournamentAfter, selectedTeam.code, nextKnockoutRound.stageName),
@@ -997,7 +1291,7 @@ export async function simulateNextMatch(req, res) {
   }
 
   const matches = matchdayFixtures.map((fixture, index) =>
-    createFixtureResult(fixture, selectedTeam.code, userTactics, `${state.results.length}-${index}`, playedAt, userLineup),
+    createFixtureResult(fixture, selectedTeam.code, userTactics, `${state.results.length}-${index}`, playedAt, userLineup, userModifier),
   );
   const managerMatch = matches.find(
     (match) => match.teams.home.code === selectedTeam.code || match.teams.away.code === selectedTeam.code,
@@ -1014,6 +1308,7 @@ export async function simulateNextMatch(req, res) {
   const { playerStats, awards } = applyDerivedTournamentState(state, nextResults, tournamentAfter);
   applyManagerCareerProgress(state, managerMatch, selectedTeam.code, tournamentAfter);
   const availabilityNews = applyManagerAvailability(state, selectedTeam, managerMatch, lineupChanges, availabilityMap, nextResults);
+  queuePostConference(state, selectedTeam, managerMatch);
   const news = [...buildMatchdayNews(matches, managerMatch, report, tournamentAfter, selectedTeam.code), ...availabilityNews];
 
   state.results.push(...matches);

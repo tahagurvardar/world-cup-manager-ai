@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Activity, BadgeAlert, Crosshair, HeartPulse, Play, Square, Star, Swords, Timer, Trophy, UserCog } from "lucide-react";
 import Flag from "../components/Flag.jsx";
 import LoadingState from "../components/LoadingState.jsx";
@@ -11,6 +11,7 @@ import { getErrorMessage } from "../services/api";
 import { routeIdFromSimId } from "../utils/player";
 
 export default function MatchCenterPage() {
+  const navigate = useNavigate();
   const [dashboard, setDashboard] = useState(null);
   const [simulation, setSimulation] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -43,6 +44,9 @@ export default function MatchCenterPage() {
       const data = await simulateMatch();
       setSimulation(data);
       setDashboard(data.dashboard);
+      if (data.tournament?.tournamentComplete) {
+        navigate("/champions", { state: { completedFromMatchCenter: true } });
+      }
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
@@ -86,20 +90,22 @@ export default function MatchCenterPage() {
         <Panel className="p-5">
           <h2 className="text-lg font-semibold text-white">Next Fixture</h2>
           {dashboard?.nextMatch ? (
-            <div className="mt-5 rounded-lg border border-pitch-300/20 bg-pitch-400/10 p-5 text-center">
-              <p className="text-sm uppercase tracking-[0.18em] text-pitch-200">
-                {dashboard.nextMatch.stageName || `Global Matchday ${dashboard.nextMatch.globalMatchday || dashboard.currentGlobalMatchday}`}
-              </p>
-              <p className="mt-2 text-xs uppercase tracking-[0.16em] text-slate-500">
-                {dashboard.nextMatch.group ? `Group ${dashboard.nextMatch.group}` : dashboard.nextMatch.id}
-              </p>
-              <div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-                <FixtureTeam name={dashboard.nextMatch.homeTeam} flag={dashboard.nextMatch.homeFlag} align="right" />
-                <span className="rounded-md bg-white/10 px-3 py-2 text-sm text-slate-300">vs</span>
-                <FixtureTeam name={dashboard.nextMatch.awayTeam} flag={dashboard.nextMatch.awayFlag} />
+            <>
+              <div className="mt-5 rounded-lg border border-pitch-300/20 bg-pitch-400/10 p-5 text-center">
+                <p className="text-sm uppercase tracking-[0.18em] text-pitch-200">
+                  {dashboard.nextMatch.stageName || `Global Matchday ${dashboard.nextMatch.globalMatchday || dashboard.currentGlobalMatchday}`}
+                </p>
+                <p className="mt-2 text-xs uppercase tracking-[0.16em] text-slate-500">
+                  {dashboard.nextMatch.group ? `Group ${dashboard.nextMatch.group}` : dashboard.nextMatch.id}
+                </p>
+                <div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                  <FixtureTeam name={dashboard.nextMatch.homeTeam} flag={dashboard.nextMatch.homeFlag} align="right" />
+                  <span className="rounded-md bg-white/10 px-3 py-2 text-sm text-slate-300">vs</span>
+                  <FixtureTeam name={dashboard.nextMatch.awayTeam} flag={dashboard.nextMatch.awayFlag} />
+                </div>
               </div>
-              <p className="mt-4 text-sm text-slate-400">{dashboard.nextMatch.venue || "Tournament stadium"}</p>
-            </div>
+              <VenueCard fixture={dashboard.nextMatch} />
+            </>
           ) : (
             <p className="mt-4 rounded-md border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-400">
               {canSimulate
@@ -132,6 +138,7 @@ export default function MatchCenterPage() {
                 <p className="mt-2 text-xs uppercase tracking-[0.14em] text-slate-500">{resultRoundLabel}</p>
                 <p className="mt-3 text-sm text-pitch-100">{simulation.headline}</p>
               </div>
+              <VenueCard fixture={match} title="Match Venue" />
 
               {simulation.lineupChanges?.length ? (
                 <div className="mt-4 rounded-xl border border-amber-400/30 bg-amber-500/[0.08] p-4">
@@ -277,6 +284,23 @@ function FixtureTeam({ name, flag, align = "left" }) {
   );
 }
 
+function VenueCard({ fixture, title = "Venue Card" }) {
+  if (!fixture) return null;
+
+  return (
+    <div className="mt-5">
+      <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">{title}</h3>
+      <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+        <Metric label="Stadium" value={formatStadium(fixture)} />
+        <Metric label="City" value={formatLocation(fixture)} />
+        <Metric label="Attendance" value={formatAttendance(fixture.attendance)} />
+        <Metric label="Weather" value={formatWeather(fixture.weather)} />
+        <Metric label="Referee" value={formatReferee(fixture.referee)} />
+      </div>
+    </div>
+  );
+}
+
 function TeamInline({ team, size = "sm" }) {
   return (
     <span className="inline-flex min-w-0 items-center gap-2">
@@ -387,6 +411,30 @@ function Metric({ icon: Icon, label, value }) {
       <p className="mt-2 font-semibold capitalize text-white">{value || "TBD"}</p>
     </div>
   );
+}
+
+function formatStadium(fixture) {
+  return fixture?.stadiumName || fixture?.venue || "Tournament stadium";
+}
+
+function formatLocation(fixture) {
+  return [fixture?.city, fixture?.country].filter(Boolean).join(", ") || "Host city TBD";
+}
+
+function formatAttendance(attendance) {
+  return attendance ? Number(attendance).toLocaleString("en-US") : "TBD";
+}
+
+function formatWeather(weather) {
+  if (!weather) return "Weather TBD";
+  if (weather.label) return weather.label;
+  if (weather.condition && weather.temperatureC != null) return `${weather.condition} ${weather.temperatureC}\u00b0C`;
+  return weather.condition || "Weather TBD";
+}
+
+function formatReferee(referee) {
+  if (!referee) return "TBD";
+  return referee.name || referee;
 }
 
 function ReportRow({ label, value }) {

@@ -20,6 +20,8 @@ const DEFAULT_MANAGER_CAREER = {
   currentTournamentFinish: "Not started",
   tournamentsPlayed: 0,
   trophiesWon: 0,
+  reputation: 0,
+  reputationTitle: "Unknown Coach",
 };
 
 const tacticsSchema = new mongoose.Schema(
@@ -62,11 +64,16 @@ const gameStateSchema = new mongoose.Schema(
     injuries: { type: [mongoose.Schema.Types.Mixed], default: [] },
     suspensions: { type: [mongoose.Schema.Types.Mixed], default: [] },
     accumulatedYellows: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
+    media: { type: mongoose.Schema.Types.Mixed, default: null },
+    pressConferences: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    pendingConference: { type: mongoose.Schema.Types.Mixed, default: null },
+    lastPreConferenceFixtureId: { type: String, default: null },
     results: [{ type: mongoose.Schema.Types.Mixed }],
     news: [{ type: mongoose.Schema.Types.Mixed }],
     playerStats: { type: mongoose.Schema.Types.Mixed, default: () => ({ players: [], leaders: {} }) },
     tournamentAwards: { type: mongoose.Schema.Types.Mixed, default: () => ({ completed: false, podium: {}, individual: {} }) },
     managerCareer: { type: mongoose.Schema.Types.Mixed, default: () => ({ ...DEFAULT_MANAGER_CAREER }) },
+    achievements: { type: [mongoose.Schema.Types.Mixed], default: [] },
     tournamentHistory: { type: [mongoose.Schema.Types.Mixed], default: [] },
     currentTournamentArchived: { type: Boolean, default: false },
     currentStage: { type: String, default: "group" },

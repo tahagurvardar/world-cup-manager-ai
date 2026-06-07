@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BarChart3, CircleUserRound, Medal, Percent, Shield, Swords, Trophy } from "lucide-react";
+import { BarChart3, CircleUserRound, Medal, Mic, Percent, Shield, Sparkles, Swords, Trophy } from "lucide-react";
 import Flag from "../components/Flag.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import Panel from "../components/Panel.jsx";
@@ -13,6 +13,7 @@ export default function ProfilePage() {
   const [dashboard, setDashboard] = useState(null);
   const career = getManagerCareer(dashboard?.managerCareer);
   const history = dashboard?.tournamentHistory || [];
+  const achievements = dashboard?.achievements || [];
 
   useEffect(() => {
     let isMounted = true;
@@ -33,12 +34,13 @@ export default function ProfilePage() {
     <>
       <PageHeader icon={CircleUserRound} title="Manager Career" description="Manager account, current national team save context, and lifetime career record." />
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
         <StatCard label="Career Record" value={`${career.wins}-${career.draws}-${career.losses}`} detail="W · D · L" icon={Swords} className="animate-fade-in-up" />
         <StatCard label="Tournaments" value={career.tournamentsPlayed} detail="Editions played" icon={Trophy} tone="blue" className="animate-fade-in-up animate-delay-1" />
         <StatCard label="Best Finish" value={career.bestTournamentFinish} icon={Medal} tone="amber" className="animate-fade-in-up animate-delay-2" />
         <StatCard label="Win Rate" value={`${career.winRate}%`} detail={`${career.gamesManaged} games managed`} icon={Percent} className="animate-fade-in-up animate-delay-3" />
         <StatCard label="Trophies" value={career.trophiesWon} detail="World Cups lifted" icon={Trophy} tone="amber" className="animate-fade-in-up animate-delay-4" />
+        <StatCard label="Reputation" value={`${career.reputation}/100`} detail={career.reputationTitle} icon={Sparkles} tone="green" className="animate-fade-in-up animate-delay-4" />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -98,8 +100,43 @@ export default function ProfilePage() {
             <Info label="Games Managed" value={career.gamesManaged} />
             <Info label="Goals For/Against" value={`${career.goalsFor}-${career.goalsAgainst}`} />
           </div>
+
+          <div className="mt-5 border-t border-white/10 pt-5">
+            <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-pitch-200">
+              <Mic size={14} /> Media Relations
+            </p>
+            <div className="grid gap-3 text-sm md:grid-cols-3">
+              <Info label="Press Conferences Held" value={career.pressConferencesHeld} />
+              <Info label="Positive Media Reactions" value={career.positiveMediaReactions} />
+              <Info label="Negative Media Reactions" value={career.negativeMediaReactions} />
+            </div>
+          </div>
         </Panel>
       </div>
+
+      <Panel className="mt-6 p-5">
+        <div className="mb-5 flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-md bg-pitch-400/12 text-pitch-200">
+            <Sparkles size={20} />
+          </span>
+          <div>
+            <h2 className="text-lg font-semibold text-white">Achievements</h2>
+            <p className="text-sm text-slate-400">Persistent milestones unlocked across your manager career.</p>
+          </div>
+        </div>
+
+        {achievements.length ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {[...achievements].reverse().map((achievement) => (
+              <AchievementCard key={achievement.id || achievement.key} achievement={achievement} />
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-md border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-400">
+            No achievements unlocked yet. Finish a tournament to start building your legacy.
+          </p>
+        )}
+      </Panel>
 
       <Panel className="mt-6 p-5">
         <div className="mb-5 flex items-center gap-3">
@@ -153,7 +190,27 @@ function getManagerCareer(career = {}) {
     currentTournamentFinish: career.currentTournamentFinish || "Not started",
     tournamentsPlayed: career.tournamentsPlayed || 0,
     trophiesWon: career.trophiesWon || 0,
+    reputation: career.reputation || 0,
+    reputationTitle: career.reputationTitle || "Unknown Coach",
+    pressConferencesHeld: career.pressConferencesHeld || 0,
+    positiveMediaReactions: career.positiveMediaReactions || 0,
+    negativeMediaReactions: career.negativeMediaReactions || 0,
   };
+}
+
+function AchievementCard({ achievement }) {
+  return (
+    <article className="rounded-md border border-amber-300/20 bg-amber-400/10 p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-100">{achievement.year || 2026}</p>
+      <h3 className="mt-2 text-lg font-semibold text-white">{achievement.title}</h3>
+      <p className="mt-2 text-sm leading-6 text-slate-300">{achievement.description || "Career milestone unlocked."}</p>
+      {achievement.player || achievement.value ? (
+        <p className="mt-3 text-xs font-semibold text-amber-100">
+          {[achievement.player, achievement.value].filter(Boolean).join(" - ")}
+        </p>
+      ) : null}
+    </article>
+  );
 }
 
 function HistoryCard({ record }) {

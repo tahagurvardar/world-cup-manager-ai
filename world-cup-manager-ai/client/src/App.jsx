@@ -5,11 +5,13 @@ import LoadingState from "./components/LoadingState.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 
 const DashboardPage = lazy(() => import("./pages/DashboardPage.jsx"));
+const ChampionsPage = lazy(() => import("./pages/ChampionsPage.jsx"));
 const LandingPage = lazy(() => import("./pages/LandingPage.jsx"));
 const LoginPage = lazy(() => import("./pages/LoginPage.jsx"));
 const MatchCenterPage = lazy(() => import("./pages/MatchCenterPage.jsx"));
 const NewsPage = lazy(() => import("./pages/NewsPage.jsx"));
 const PlayerProfilePage = lazy(() => import("./pages/PlayerProfilePage.jsx"));
+const PressConferencePage = lazy(() => import("./pages/PressConferencePage.jsx"));
 const ProfilePage = lazy(() => import("./pages/ProfilePage.jsx"));
 const RegisterPage = lazy(() => import("./pages/RegisterPage.jsx"));
 const SelectTeamPage = lazy(() => import("./pages/SelectTeamPage.jsx"));
@@ -35,10 +37,12 @@ export default function App() {
         <Route element={<ProtectedLayout />}>
           <Route path="/select-team" element={<SelectTeamPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/champions" element={<ChampionsPage />} />
           <Route path="/squad" element={<SquadPage />} />
           <Route path="/player/:playerId" element={<PlayerProfilePage />} />
           <Route path="/tactics" element={<TacticsPage />} />
           <Route path="/match-center" element={<MatchCenterPage />} />
+          <Route path="/press-conference" element={<PressConferencePage />} />
           <Route path="/tournament" element={<TournamentPage />} />
           <Route path="/news" element={<NewsPage />} />
           <Route path="/profile" element={<ProfilePage />} />

@@ -1,4 +1,5 @@
 import { groupOrder, teams } from "./teams.js";
+import { enrichFixtureAtmosphere } from "./atmosphere.js";
 
 const MATCHDAYS = [
   [
@@ -28,16 +29,17 @@ export function createGroupFixtures() {
     const teamCodes = groups[groupName];
 
     return MATCHDAYS.flatMap((matchday, matchdayIndex) =>
-      matchday.map(([homeIndex, awayIndex], fixtureIndex) => ({
-        id: `${groupName}-MD${matchdayIndex + 1}-${fixtureIndex + 1}`,
-        stage: "group",
-        group: groupName,
-        matchday: matchdayIndex + 1,
-        globalMatchday: matchdayIndex + 1,
-        homeTeamCode: teamCodes[homeIndex],
-        awayTeamCode: teamCodes[awayIndex],
-        venue: `World Cup Stadium ${groupName}${fixtureIndex + 1}`,
-      })),
+      matchday.map(([homeIndex, awayIndex], fixtureIndex) =>
+        enrichFixtureAtmosphere({
+          id: `${groupName}-MD${matchdayIndex + 1}-${fixtureIndex + 1}`,
+          stage: "group",
+          group: groupName,
+          matchday: matchdayIndex + 1,
+          globalMatchday: matchdayIndex + 1,
+          homeTeamCode: teamCodes[homeIndex],
+          awayTeamCode: teamCodes[awayIndex],
+        }),
+      ),
     );
   });
 }

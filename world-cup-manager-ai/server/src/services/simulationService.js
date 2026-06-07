@@ -47,6 +47,19 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function combineModifiers(...modifiers) {
+  return modifiers
+    .filter(Boolean)
+    .reduce(
+      (combined, modifier) => ({
+        powerDelta: combined.powerDelta + (Number(modifier.powerDelta) || 0),
+        ratingDelta: combined.ratingDelta + (Number(modifier.ratingDelta) || 0),
+        staminaDelta: combined.staminaDelta + (Number(modifier.staminaDelta) || 0),
+      }),
+      { powerDelta: 0, ratingDelta: 0, staminaDelta: 0 },
+    );
+}
+
 function hashString(input) {
   let hash = 1779033703 ^ input.length;
   for (let index = 0; index < input.length; index += 1) {
@@ -154,23 +167,25 @@ function tacticalProfile(tactics, opponentTactics) {
   };
 }
 
-function calculatePower(team, tactics, opponentTactics, squadPlayers) {
+function calculatePower(team, tactics, opponentTactics, squadPlayers, modifier) {
   const squad = squadProfile(squadPlayers);
   const tactical = tacticalProfile(tactics, opponentTactics);
+  const stamina = clamp(squad.stamina + (modifier?.staminaDelta || 0), 1, 100);
   const base =
     team.overall * 0.45 +
     squad.overall * 0.25 +
     squad.form * 0.11 +
     squad.morale * 0.08 +
-    squad.stamina * 0.05 +
+    stamina * 0.05 +
     squad.physical * 0.03 +
-    squad.passing * 0.03;
+    squad.passing * 0.03 +
+    (modifier?.powerDelta || 0);
 
   return {
     attack: base + squad.shooting * 0.08 + squad.pace * 0.05 + tactical.attack,
     defense: base + squad.defending * 0.09 + squad.physical * 0.04 + tactical.defense,
     possession: 50 + (squad.passing - 75) * 0.25 + tactical.possession,
-    fouls: 9 + tactical.fouls + (100 - squad.stamina) * 0.04,
+    fouls: 9 + tactical.fouls + (100 - stamina) * 0.04,
     variance: tactical.variance,
   };
 }
@@ -422,10 +437,11 @@ function resultRatingAdjustment(result) {
   return -0.18;
 }
 
-function buildRatingsForTeam(team, squad, match, contributions, random, knockoutWinnerCode) {
+function buildRatingsForTeam(team, squad, match, contributions, random, knockoutWinnerCode, modifier) {
   const result = resultForTeam(team, match, knockoutWinnerCode);
   const goalsAgainst = goalsAgainstForTeam(team, match);
   const cleanSheet = goalsAgainst === 0;
+  const ratingDelta = modifier?.ratingDelta || 0;
 
   return squad.map((player) => {
     const id = playerId(team, player);
@@ -434,7 +450,8 @@ function buildRatingsForTeam(team, squad, match, contributions, random, knockout
       baseRating(player, random) +
         contributionRatingBoost(player, contribution) +
         defensiveRatingAdjustment(player, goalsAgainst, cleanSheet) +
-        resultRatingAdjustment(result),
+        resultRatingAdjustment(result) +
+        ratingDelta,
       4,
       10,
     );
@@ -458,10 +475,10 @@ function buildRatingsForTeam(team, squad, match, contributions, random, knockout
   });
 }
 
-function attachPlayerPerformance(match, homeTeam, homeSquad, awayTeam, awaySquad, random, knockoutWinnerCode = null) {
+function attachPlayerPerformance(match, homeTeam, homeSquad, awayTeam, awaySquad, random, knockoutWinnerCode = null, homeModifier, awayModifier) {
   const contributions = buildContributions(match.events);
-  const homeRatings = buildRatingsForTeam(homeTeam, homeSquad, match, contributions, random, knockoutWinnerCode);
-  const awayRatings = buildRatingsForTeam(awayTeam, awaySquad, match, contributions, random, knockoutWinnerCode);
+  const homeRatings = buildRatingsForTeam(homeTeam, homeSquad, match, contributions, random, knockoutWinnerCode, homeModifier);
+  const awayRatings = buildRatingsForTeam(awayTeam, awaySquad, match, contributions, random, knockoutWinnerCode, awayModifier);
   const playerRatings = [...homeRatings, ...awayRatings].sort((a, b) => {
     if (b.rating !== a.rating) return b.rating - a.rating;
     if (b.goals !== a.goals) return b.goals - a.goals;
@@ -535,9 +552,12 @@ export function getDefaultOpponentTactics(team) {
 export function simulateMatch(homeTeam, awayTeam, homeTactics, awayTactics, seed = "friendly", options = {}) {
   const homeSquad = resolveMatchSquad(homeTeam, options.homeLineup);
   const awaySquad = resolveMatchSquad(awayTeam, options.awayLineup);
+  const atmosphereModifier = options.atmosphereModifier;
+  const homeModifier = combineModifiers(atmosphereModifier, options.homeModifier);
+  const awayModifier = combineModifiers(atmosphereModifier, options.awayModifier);
   const random = createSeededRandom(`${seed}-${homeTeam.code}-${awayTeam.code}`);
-  const homePower = calculatePower(homeTeam, homeTactics, awayTactics, homeSquad);
-  const awayPower = calculatePower(awayTeam, awayTactics, homeTactics, awaySquad);
+  const homePower = calculatePower(homeTeam, homeTactics, awayTactics, homeSquad, homeModifier);
+  const awayPower = calculatePower(awayTeam, awayTactics, homeTactics, awaySquad, awayModifier);
   const homeAdvantage = 0.16;
   const homeXg = clamp(
     1.1 + (homePower.attack - awayPower.defense) / 16 + homeAdvantage + (random() - 0.5) * (0.6 + homePower.variance),
@@ -608,15 +628,18 @@ export function simulateMatch(homeTeam, awayTeam, homeTactics, awayTactics, seed
     },
     events,
     injuries,
+    atmosphereEffects: atmosphereModifier || null,
   };
 
-  return attachPlayerPerformance(match, homeTeam, homeSquad, awayTeam, awaySquad, random);
+  return attachPlayerPerformance(match, homeTeam, homeSquad, awayTeam, awaySquad, random, null, homeModifier, awayModifier);
 }
 
 export function simulateKnockoutMatch(homeTeam, awayTeam, homeTactics, awayTactics, seed = "knockout", stage = "Knockout", options = {}) {
   const match = simulateMatch(homeTeam, awayTeam, homeTactics, awayTactics, seed, options);
   const homeSquad = resolveMatchSquad(homeTeam, options.homeLineup);
   const awaySquad = resolveMatchSquad(awayTeam, options.awayLineup);
+  const homeModifier = combineModifiers(options.atmosphereModifier, options.homeModifier);
+  const awayModifier = combineModifiers(options.atmosphereModifier, options.awayModifier);
   const random = createSeededRandom(`${seed}-${stage}-resolution`);
   const normalTimeScore = { ...match.score };
   let resolution = "normal-time";
@@ -679,5 +702,5 @@ export function simulateKnockoutMatch(homeTeam, awayTeam, homeTactics, awayTacti
     },
   };
 
-  return attachPlayerPerformance(resolvedMatch, homeTeam, homeSquad, awayTeam, awaySquad, random, winner.code);
+  return attachPlayerPerformance(resolvedMatch, homeTeam, homeSquad, awayTeam, awaySquad, random, winner.code, homeModifier, awayModifier);
 }

@@ -22,6 +22,9 @@ This project uses the existing WorldCup idea as inspiration only. The codebase i
 - Tactics controls for formation, mentality, pressing, tempo, and defensive line, with a live formation preview on the pitch
 - Deterministic match simulation using team strength, form, morale, stamina, tactical matchups, and seeded variance
 - Match simulation uses the selected Starting XI for goals, assists, cards, ratings, and Man of the Match (falling back to the best auto-picked eleven when none is set), so only matchday players receive ratings
+- Pre- and post-match press conferences update fan confidence, media pressure, board confidence, morale, manager media counters, generated news, and subtle match simulation modifiers
+- World Cup atmosphere system with real host stadiums, city/country fixture data, generated attendance, weather, referees, venue cards, atmosphere news, and subtle weather effects
+- World Cup trophy celebration system with a dedicated champions route, premium trophy/confetti presentation, final awards, tournament story, campaign stats, persistent achievements, and manager reputation
 - Match output with score, possession, xG, shots, shots on target, fouls, cards, man of the match, and minute-by-minute events
 - 2026-style tournament model with 12 groups, best third-place ranking, and a complete 32-team knockout phase
 - Full global matchday simulation so every scheduled group fixture is played together
@@ -180,6 +183,8 @@ If the backend warns that `JWT_SECRET` is missing or still using the example val
 - `PUT /api/game/squad` - saves a Starting XI and bench selection
 - `POST /api/game/squad/auto` - returns a suggested Starting XI and bench for the current or a requested formation
 - `GET /api/game/player/:playerId` - returns a full player profile (`playerId` is `TEAMCODE-INDEX`, e.g. `TUR-5`): info, derived attributes, tournament stats, career stats, and rating history
+- `GET /api/game/press-conference` - returns the active pre- or post-match press conference, current media meters, and recent conference history
+- `POST /api/game/press-conference` - submits answer tones, applies media/morale effects, updates manager media counters, and generates press news
 - `GET /api/game/tactics`
 - `PUT /api/game/tactics`
 - `POST /api/game/simulate` - simulates the next full global group matchday or knockout round

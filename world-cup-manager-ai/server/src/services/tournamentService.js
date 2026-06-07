@@ -1,5 +1,6 @@
 import { fixtures, knockoutTemplate } from "../data/groups.js";
 import { groupOrder, teams } from "../data/teams.js";
+import { enrichFixtureAtmosphere } from "../data/atmosphere.js";
 
 export const knockoutRounds = [
   { key: "roundOf32", label: "Round of 32", prefix: "R32" },
@@ -76,7 +77,7 @@ function withTeamFields(match, homeTeamCode, awayTeamCode, playedResults) {
   const winnerCode = getWinnerCode(result);
   const loserCode = getLoserCode(result);
 
-  return {
+  return enrichFixtureAtmosphere({
     ...match,
     homeTeamCode,
     awayTeamCode,
@@ -93,18 +94,18 @@ function withTeamFields(match, homeTeamCode, awayTeamCode, playedResults) {
     loserTeamCode: loserCode,
     winnerTeam: winnerCode ? getTeam(winnerCode)?.name : null,
     loserTeam: loserCode ? getTeam(loserCode)?.name : null,
-  };
+  });
 }
 
 function placeholderMatch(id, stage, stageName, homeSeed, awaySeed) {
-  return {
+  return enrichFixtureAtmosphere({
     id,
     stage,
     stageName,
     homeSeed,
     awaySeed,
     status: "locked",
-  };
+  });
 }
 
 export function getRoundLabel(stage) {

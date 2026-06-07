@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   LogOut,
   Mail,
+  Mic,
   Newspaper,
   Settings,
   Shield,
@@ -25,6 +26,7 @@ const navItems = [
   { to: "/squad", label: "Squad", icon: Shirt },
   { to: "/tactics", label: "Tactics", icon: ClipboardList },
   { to: "/match-center", label: "Match Center", icon: Swords },
+  { to: "/press-conference", label: "Press Conference", icon: Mic },
   { to: "/tournament", label: "Tournament", icon: Trophy },
   { to: "/news", label: "News", icon: Newspaper },
   { to: "/profile", label: "Profile", icon: CircleUserRound },
@@ -60,8 +62,8 @@ export default function AppLayout() {
 
   return (
     <div className="min-h-screen text-slate-100">
-      <div className="grid min-h-screen lg:grid-cols-[264px_1fr]">
-        <Sidebar user={user} onLogout={handleLogout} />
+      <div className="grid min-h-screen min-w-0 overflow-x-hidden lg:grid-cols-[264px_1fr]">
+        <Sidebar user={user} onLogout={handleLogout} pressPending={header?.pressConferencePending} />
 
         <main className="pitch-grid min-w-0">
           <header className="sticky top-0 z-20 border-b border-white/10 bg-ink-950/70 px-4 py-3 backdrop-blur-xl md:px-8">
@@ -102,9 +104,9 @@ export default function AppLayout() {
   );
 }
 
-function Sidebar({ user, onLogout }) {
+function Sidebar({ user, onLogout, pressPending }) {
   return (
-    <aside className="z-30 border-b border-white/10 bg-ink-950/80 px-3 py-4 backdrop-blur-xl lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r lg:py-6">
+    <aside className="z-30 min-w-0 overflow-hidden border-b border-white/10 bg-ink-950/80 px-3 py-4 backdrop-blur-xl lg:sticky lg:top-0 lg:h-screen lg:border-b-0 lg:border-r lg:py-6">
       <div className="flex items-center justify-between gap-4 px-1 lg:block">
         <NavLink to="/dashboard" className="flex items-center gap-3">
           <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-pitch-400 to-pitch-600 text-ink-950 shadow-glow">
@@ -120,7 +122,7 @@ function Sidebar({ user, onLogout }) {
         </button>
       </div>
 
-      <nav className="mt-4 flex gap-1.5 overflow-x-auto pb-1 lg:mt-8 lg:flex-col lg:gap-1 lg:overflow-visible lg:pb-0">
+      <nav className="mt-4 flex max-w-full gap-1.5 overflow-x-auto pb-1 lg:mt-8 lg:flex-col lg:gap-1 lg:overflow-visible lg:pb-0">
         {navItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -140,6 +142,9 @@ function Sidebar({ user, onLogout }) {
                   {isActive ? <span className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-pitch-400 shadow-glow" /> : null}
                   <Icon size={18} className={isActive ? "text-pitch-200" : ""} />
                   {item.label}
+                  {item.to === "/press-conference" && pressPending ? (
+                    <span className="ml-auto h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
+                  ) : null}
                 </>
               )}
             </NavLink>

@@ -40,6 +40,16 @@ export async function fetchPlayerProfile(playerId) {
   return data.profile;
 }
 
+export async function fetchPressConference() {
+  const { data } = await api.get("/game/press-conference");
+  return data;
+}
+
+export async function submitPressConference(answers) {
+  const { data } = await api.post("/game/press-conference", { answers });
+  return data;
+}
+
 export async function fetchTactics() {
   const { data } = await api.get("/game/tactics");
   return data.tactics;

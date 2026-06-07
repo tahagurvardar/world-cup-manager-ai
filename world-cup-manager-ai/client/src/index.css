@@ -123,3 +123,62 @@ button:disabled {
 .animate-delay-4 {
   animation-delay: 0.2s;
 }
+
+.champion-fade-in {
+  animation: championFadeIn 420ms ease-out both;
+}
+
+.champion-trophy-pulse {
+  animation: championTrophyPulse 2.6s ease-in-out infinite;
+}
+
+.champion-confetti {
+  position: absolute;
+  top: -1.5rem;
+  width: 0.55rem;
+  height: 0.9rem;
+  border-radius: 0.125rem;
+  background: linear-gradient(180deg, #fde68a, #f59e0b);
+  opacity: 0.82;
+  animation: championConfettiFall 3.2s linear infinite;
+}
+
+.champion-confetti:nth-child(3n) {
+  background: linear-gradient(180deg, #bbf7d0, #22c55e);
+}
+
+.champion-confetti:nth-child(4n) {
+  background: linear-gradient(180deg, #dbeafe, #38bdf8);
+}
+
+@keyframes championFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes championTrophyPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 42px rgba(251, 191, 36, 0.35);
+  }
+  50% {
+    transform: scale(1.035);
+    box-shadow: 0 0 62px rgba(251, 191, 36, 0.48);
+  }
+}
+
+@keyframes championConfettiFall {
+  from {
+    transform: translate3d(0, -1rem, 0) rotate(0deg);
+  }
+  to {
+    transform: translate3d(1.75rem, 26rem, 0) rotate(540deg);
+  }
+}

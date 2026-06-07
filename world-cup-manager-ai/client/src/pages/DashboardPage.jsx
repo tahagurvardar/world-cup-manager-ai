@@ -8,9 +8,13 @@ import {
   ChevronRight,
   Flame,
   Gauge,
+  ArrowDownRight,
+  ArrowRight,
+  ArrowUpRight,
   Goal,
   HeartPulse,
   Medal,
+  Mic,
   Play,
   ShieldCheck,
   Target,
@@ -174,7 +178,9 @@ export default function DashboardPage() {
                 <MatchSide name={dashboard.nextMatch.awayTeam} flag={dashboard.nextMatch.awayFlag} />
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-400">
-                <InfoPill label="Stadium" value={dashboard.nextMatch.venue || "Tournament stadium"} />
+                <InfoPill label="Stadium" value={dashboard.nextMatch.stadiumName || dashboard.nextMatch.venue || "Tournament stadium"} />
+                <InfoPill label="City" value={formatLocation(dashboard.nextMatch)} />
+                <InfoPill label="Weather" value={formatWeather(dashboard.nextMatch.weather)} />
                 <InfoPill label="Round" value={dashboard.nextMatch.stageName || `Matchday ${dashboard.nextMatch.globalMatchday || dashboard.currentGlobalMatchday || 1}`} />
               </div>
               <button type="button" onClick={() => navigate("/match-center")} className="btn-primary mt-4 w-full py-3 text-base uppercase tracking-wide">
@@ -208,7 +214,7 @@ export default function DashboardPage() {
               <tbody className="divide-y divide-white/[0.06]">
                 {dashboard.keyPlayers.map((player, index) => (
                   <tr
-                    key={`${player.name}-${player.position}`}
+                    key={`${player.teamCode || team.code}-${player.index ?? index}`}
                     onClick={() => player.index != null && navigate(playerRoute(player.teamCode || team.code, player.index))}
                     className="cursor-pointer text-slate-300 transition hover:bg-white/[0.03]"
                   >
@@ -260,6 +266,27 @@ export default function DashboardPage() {
         </div>
       </Panel>
 
+      {/* Media & confidence */}
+      {dashboard.media ? (
+        <Panel className="p-5">
+          <SectionHeader
+            icon={Mic}
+            title="Media & Confidence"
+            subtitle="Shaped by your press conferences"
+            action={
+              <button type="button" onClick={() => navigate("/press-conference")} className="text-xs font-semibold text-pitch-200 hover:text-pitch-100">
+                {dashboard.pressConferencePending ? "Conference waiting →" : "Press Room →"}
+              </button>
+            }
+          />
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <MediaCard label="Fan Confidence" value={dashboard.media.fanConfidence} trend={dashboard.media.trends?.fanConfidence} tone="green" />
+            <MediaCard label="Media Pressure" value={dashboard.media.mediaPressure} trend={dashboard.media.trends?.mediaPressure} tone="amber" invert />
+            <MediaCard label="Board Confidence" value={dashboard.media.boardConfidence} trend={dashboard.media.trends?.boardConfidence} tone="blue" />
+          </div>
+        </Panel>
+      ) : null}
+
       {/* Manager record + Route + News */}
       <div className="grid gap-6 lg:grid-cols-3">
         <Panel className="p-5">
@@ -270,7 +297,15 @@ export default function DashboardPage() {
             <RecordItem label="Goals" value={`${managerCareer.goalsFor}-${managerCareer.goalsAgainst}`} />
             <RecordItem label="Best Finish" value={managerCareer.bestTournamentFinish} />
             <RecordItem label="Trophies" value={managerCareer.trophiesWon} />
+            <RecordItem label="Reputation" value={`${managerCareer.reputation}/100`} />
           </div>
+          {dashboard.lastTournamentWon && dashboard.latestAchievement ? (
+            <div className="mt-3 rounded-lg border border-amber-300/20 bg-amber-400/10 px-3 py-2">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-100">Latest Achievement</p>
+              <p className="mt-1 font-semibold text-white">{dashboard.latestAchievement.title}</p>
+              <p className="mt-1 text-xs leading-5 text-slate-400">{dashboard.latestAchievement.description}</p>
+            </div>
+          ) : null}
         </Panel>
 
         <Panel className="p-5">
@@ -364,6 +399,17 @@ function formatStageForCard(stage) {
   return stage.replace("Group Stage - Matchday", "Group MD");
 }
 
+function formatLocation(fixture) {
+  return [fixture?.city, fixture?.country].filter(Boolean).join(", ") || "Host city TBD";
+}
+
+function formatWeather(weather) {
+  if (!weather) return "Weather TBD";
+  if (weather.label) return weather.label;
+  if (weather.condition && weather.temperatureC != null) return `${weather.condition} ${weather.temperatureC}\u00b0C`;
+  return weather.condition || "Weather TBD";
+}
+
 function getManagerCareer(career = {}) {
   return {
     wins: career.wins || 0,
@@ -374,6 +420,8 @@ function getManagerCareer(career = {}) {
     winRate: career.winRate || 0,
     bestTournamentFinish: career.bestTournamentFinish || "Not started",
     trophiesWon: career.trophiesWon || 0,
+    reputation: career.reputation || 0,
+    reputationTitle: career.reputationTitle || "Unknown Coach",
   };
 }
 
@@ -449,6 +497,26 @@ function MiniBar({ value = 0, tone = "green" }) {
         <div className={`h-full rounded-full bg-gradient-to-r ${color}`} style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
       </div>
       <span className="text-xs text-slate-400">{value}</span>
+    </div>
+  );
+}
+
+function MediaCard({ label, value, trend, tone, invert }) {
+  const up = trend === "up";
+  const flat = !trend || trend === "flat";
+  const good = invert ? !up : up;
+  const Arrow = flat ? ArrowRight : up ? ArrowUpRight : ArrowDownRight;
+  const arrowClass = flat ? "text-slate-500" : good ? "text-pitch-300" : "text-red-300";
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</p>
+        <Arrow size={16} className={arrowClass} />
+      </div>
+      <p className="mt-1 text-3xl font-black text-white">{value ?? "—"}%</p>
+      <div className="mt-2">
+        <ProgressBar value={value} tone={tone} showValue={false} label="" />
+      </div>
     </div>
   );
 }
