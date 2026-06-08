@@ -9,9 +9,32 @@ import { errorHandler, notFound } from "./middleware/errorHandler.js";
 
 const app = express();
 
+const defaultClientOrigins = ["http://localhost:5173", "http://127.0.0.1:5173"];
+
+function parseAllowedOrigins() {
+  const configuredOrigins = process.env.CLIENT_URLS || process.env.CLIENT_URL;
+  const origins = configuredOrigins
+    ? configuredOrigins
+        .split(",")
+        .map((origin) => origin.trim())
+        .filter(Boolean)
+    : defaultClientOrigins;
+
+  return new Set(origins);
+}
+
+const allowedOrigins = parseAllowedOrigins();
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.has(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(null, false);
+    },
     credentials: true,
   }),
 );
