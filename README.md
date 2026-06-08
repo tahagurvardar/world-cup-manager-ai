@@ -12,6 +12,9 @@ This project uses the existing WorldCup idea as inspiration only. The codebase i
 - 25-player fictional squads per country with position and attribute data
 - Tactics controls for formation, mentality, pressing, tempo, and defensive line
 - Deterministic match simulation using team strength, form, morale, stamina, tactical matchups, and seeded variance
+- Pre- and post-match press conferences update fan confidence, media pressure, board confidence, morale, manager media counters, generated news, and subtle match simulation modifiers
+- World Cup atmosphere system with real host stadiums, city/country fixture data, generated attendance, weather, referees, venue cards, atmosphere news, and subtle weather effects
+- World Cup trophy celebration system with a dedicated champions route, premium trophy/confetti presentation, final awards, tournament story, campaign stats, persistent achievements, and manager reputation
 - Match output with score, possession, xG, shots, shots on target, fouls, cards, man of the match, and minute-by-minute events
 - 2026-style tournament model with 12 groups, best third-place ranking, and a complete 32-team knockout phase
 - Full global matchday simulation so every scheduled group fixture is played together
@@ -160,6 +163,8 @@ If the backend warns that `JWT_SECRET` is missing or still using the example val
 - `POST /api/game/select-team`
 - `GET /api/game/dashboard`
 - `GET /api/game/squad`
+- `GET /api/game/press-conference`
+- `POST /api/game/press-conference`
 - `GET /api/game/tactics`
 - `PUT /api/game/tactics`
 - `POST /api/game/simulate` - simulates the next full global group matchday or knockout round
