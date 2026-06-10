@@ -52,6 +52,15 @@ export function AuthProvider({ children }) {
     return data.user;
   }
 
+  // One-click demo session: no credentials, server resets the demo save.
+  async function loginDemo() {
+    const { data } = await api.post("/auth/demo");
+    localStorage.setItem("wcm_token", data.token);
+    setToken(data.token);
+    setUser(data.user);
+    return data.user;
+  }
+
   function logout() {
     localStorage.removeItem("wcm_token");
     setToken(null);
@@ -65,6 +74,7 @@ export function AuthProvider({ children }) {
       loading,
       isAuthenticated: Boolean(token),
       login,
+      loginDemo,
       register,
       logout,
     }),

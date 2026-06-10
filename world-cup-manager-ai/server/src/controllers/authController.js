@@ -1,7 +1,12 @@
+import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { hasDatabaseConnection } from "../config/db.js";
+import { GameState } from "../models/GameState.js";
 import { User } from "../models/User.js";
+
+const DEMO_EMAIL = "demo@worldcupmanager.ai";
+const DEMO_USERNAME = "Demo Manager";
 
 function requireDatabase(res) {
   if (hasDatabaseConnection()) return false;
@@ -67,6 +72,31 @@ export async function login(req, res) {
   return res.json({
     user: user.toSafeJSON(),
     token: createToken(user),
+  });
+}
+
+// Instant demo access for portfolio visitors. Finds or creates the canonical demo
+// account with a random, never-exposed password, then wipes only the demo user's
+// GameState so every demo session starts fresh (no team selected) without touching
+// any real user's data.
+export async function loginDemo(req, res) {
+  if (requireDatabase(res)) return;
+
+  let user = await User.findOne({ email: DEMO_EMAIL });
+
+  if (!user) {
+    const passwordHash = await bcrypt.hash(crypto.randomBytes(24).toString("hex"), 12);
+    user = await User.create({ username: DEMO_USERNAME, email: DEMO_EMAIL, passwordHash });
+  }
+
+  // Reset the demo save: a fresh GameState (with defaults) is created on first request.
+  await GameState.deleteOne({ user: user._id });
+
+  return res.json({
+    user: user.toSafeJSON(),
+    token: createToken(user),
+    demo: true,
+    message: "Demo session ready. Pick a nation and start the tournament.",
   });
 }
 

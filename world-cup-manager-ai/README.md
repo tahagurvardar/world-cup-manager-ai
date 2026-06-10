@@ -10,7 +10,7 @@ This project uses the existing WorldCup idea as inspiration only. The codebase i
 - National team selection from the provided official 2026-style 48-team group structure
 - Local image-based SVG flag assets for every national team
 - Team dashboard with overall, morale, form, next match, tournament progress, and AI advice
-- 25-player fictional squads per country with position and attribute data
+- 23-26 player squads per country with position and attribute data: 14 major nations (Turkey, Brazil, Argentina, France, Portugal, England, Germany, Spain, Netherlands, Croatia, Morocco, Japan, United States, Mexico) use manually curated realistic squads with original, manually estimated ratings, while the remaining 34 teams use generated fictional players; curated squads are topped up with fictional depth players where needed
 - Starting XI management: auto-pick the best eleven by position and overall for the active formation, with per-slot replacement
 - Bench management: build a 7–12 player bench (backup goalkeeper, defenders, midfielders, attackers) from the remaining squad
 - Tactical pitch visualization with shirt markers, names, positions, and overall ratings, reused on the Dashboard, Tactics preview, and Squad Starting XI tab
@@ -73,7 +73,7 @@ The MVP uses a 2026-style structure:
 The Round of 32 bracket is simplified for deterministic gameplay. It uses the 12 group winners, 12 runners-up, and best 8 third-placed teams in a fixed seeded order instead of the official third-place pairing matrix.
 Each knockout click simulates the next full round. Drawn knockout matches go to extra time, then penalties if still level.
 
-The team list and groups follow the provided 2026 World Cup structure used by this project, including Turkey in Group D with United States, Paraguay, and Australia. National team names and confederations are real, while all player names and attributes remain fictional/generated for gameplay.
+The team list and groups follow the provided 2026 World Cup structure used by this project, including Turkey in Group D with United States, Paraguay, and Australia. National team names and confederations are real. Fourteen major nations use manually curated realistic player squads (real player names with original, manually estimated ratings — not sourced from FIFA/EA, Football Manager, or any commercial database); the remaining teams use fictional generated players, and curated squads are completed with fictional depth players when below the minimum squad size.
 
 Flags are stored as local SVG image assets under `client/public/flags/` and referenced from team data with paths such as `/flags/turkey.svg`. The app does not use emoji flags or hotlinked external flag images.
 
@@ -104,6 +104,17 @@ world-cup-manager-ai/
   README.md
   .gitignore
 ```
+
+## Demo Mode
+
+Portfolio visitors can try the game instantly without registering:
+
+1. Open the landing page (or the login page) and click **Try Demo**.
+2. The app signs you into a sandbox demo account (`demo@worldcupmanager.ai`) — no password is shown or required; the account uses a random server-side password.
+3. The demo save is reset on every demo login, so each session starts fresh with no team selected. Pick a nation, build your XI, and simulate the tournament.
+4. The reset only touches the demo account's game state — real user accounts and saves are never affected.
+
+Demo access uses `POST /api/auth/demo`, which finds or creates the demo user, wipes its previous GameState, and returns a normal JWT session.
 
 ## Local Setup
 
@@ -174,6 +185,7 @@ If the backend warns that `JWT_SECRET` is missing or still using the example val
 
 - `POST /api/auth/register`
 - `POST /api/auth/login`
+- `POST /api/auth/demo` - instant demo session: finds/creates the demo account and resets its game state
 - `GET /api/auth/me`
 - `GET /api/teams`
 - `GET /api/teams/:code`

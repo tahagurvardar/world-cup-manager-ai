@@ -1,16 +1,17 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { LogIn, Trophy } from "lucide-react";
+import { LogIn, Play, Trophy } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { getErrorMessage } from "../services/api";
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, loginDemo } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -24,6 +25,20 @@ export default function LoginPage() {
       setError(getErrorMessage(requestError));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleDemo() {
+    setDemoLoading(true);
+    setError("");
+
+    try {
+      await loginDemo();
+      navigate("/select-team", { replace: true });
+    } catch (requestError) {
+      setError(getErrorMessage(requestError));
+    } finally {
+      setDemoLoading(false);
     }
   }
 
@@ -71,6 +86,23 @@ export default function LoginPage() {
           <LogIn size={18} />
           {submitting ? "Signing in..." : "Login"}
         </button>
+
+        <div className="mt-4 flex items-center gap-3 text-xs uppercase tracking-[0.18em] text-slate-500">
+          <span className="h-px flex-1 bg-white/10" />
+          or
+          <span className="h-px flex-1 bg-white/10" />
+        </div>
+
+        <button
+          type="button"
+          onClick={handleDemo}
+          disabled={demoLoading}
+          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md border border-pitch-300/40 bg-pitch-400/10 px-4 py-3 text-sm font-semibold text-pitch-100 transition hover:bg-pitch-400/20 disabled:opacity-60"
+        >
+          <Play size={18} />
+          {demoLoading ? "Preparing demo..." : "Try Demo"}
+        </button>
+        <p className="mt-2 text-center text-xs text-slate-500">Instant sandbox account — no registration needed.</p>
 
         <p className="mt-5 text-center text-sm text-slate-400">
           New manager?{" "}

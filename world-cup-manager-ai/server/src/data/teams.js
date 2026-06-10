@@ -1,3 +1,5 @@
+import { REAL_SQUADS } from "./realSquads.js";
+
 const ROLE_PLAN = [
   "GK",
   "GK",
@@ -283,8 +285,79 @@ function makePlayer(profile, position, index) {
   };
 }
 
+// Builds a player from a manually curated row [name, age, position, club, overall].
+// The headline overall is the manual estimate; sub-attributes are derived from it with
+// the same position profiles and deterministic noise used for generated players, so
+// curated squads stay balanced against the rest of the field.
+function makeCuratedPlayer(profile, [name, age, position, club, overall]) {
+  const positionProfile = POSITION_PROFILES[position];
+  const playerSeed = `${profile.code}-real-${name}`;
+  const form = clamp(profile.form + signedNoise(`${playerSeed}-form`, 6), 60, 95);
+  const morale = clamp(profile.morale + signedNoise(`${playerSeed}-morale`, 6), 60, 96);
+  const stamina = clamp(80 - Math.max(0, age - 30) * 1.5 + signedNoise(`${playerSeed}-stamina`, 8), 58, 96);
+
+  return {
+    name,
+    age,
+    nationality: profile.name,
+    position,
+    club,
+    overall: clamp(overall, 58, 95),
+    pace: clamp(overall + positionProfile.pace - Math.max(0, age - 31) + signedNoise(`${playerSeed}-pace`, 4), 35, 96),
+    shooting: clamp(overall + positionProfile.shooting + signedNoise(`${playerSeed}-shooting`, 4), 25, 96),
+    passing: clamp(overall + positionProfile.passing + signedNoise(`${playerSeed}-passing`, 4), 35, 96),
+    defending: clamp(overall + positionProfile.defending + signedNoise(`${playerSeed}-defending`, 4), 25, 96),
+    physical: clamp(overall + positionProfile.physical + signedNoise(`${playerSeed}-physical`, 4), 35, 96),
+    form,
+    morale,
+    stamina,
+  };
+}
+
+// Tops a curated squad up with fictional depth players: guarantees three goalkeepers and
+// a minimum squad size so XI generation, bench building, and injuries always have cover.
+const FILL_PLAN = ["CB", "CM", "ST", "RB", "LB", "DM", "RW", "LW", "AM"];
+const MIN_SQUAD_SIZE = 24;
+
+// Fictional depth players must not outshine curated internationals: cap their overall at
+// backup tier (team overall minus 6) and scale the derived attributes down by the same gap.
+function asDepthPlayer(profile, player) {
+  const cap = clamp(profile.overall - 6, 62, 75);
+  if (player.overall <= cap) return player;
+  const delta = player.overall - cap;
+
+  return {
+    ...player,
+    overall: cap,
+    pace: clamp(player.pace - delta, 35, 96),
+    shooting: clamp(player.shooting - delta, 25, 96),
+    passing: clamp(player.passing - delta, 35, 96),
+    defending: clamp(player.defending - delta, 25, 96),
+    physical: clamp(player.physical - delta, 35, 96),
+  };
+}
+
+function fillCuratedSquad(profile, players) {
+  let fillIndex = 100; // offset keeps fictional fill names distinct from generated squads
+
+  while (players.filter((player) => player.position === "GK").length < 3) {
+    players.push(asDepthPlayer(profile, makePlayer(profile, "GK", fillIndex++)));
+  }
+
+  let planIndex = 0;
+  while (players.length < MIN_SQUAD_SIZE) {
+    players.push(asDepthPlayer(profile, makePlayer(profile, FILL_PLAN[planIndex % FILL_PLAN.length], fillIndex++)));
+    planIndex += 1;
+  }
+
+  return players;
+}
+
 function buildTeam(profile) {
-  const players = ROLE_PLAN.map((position, index) => makePlayer(profile, position, index));
+  const curatedRows = REAL_SQUADS[profile.code];
+  const players = curatedRows
+    ? fillCuratedSquad(profile, curatedRows.map((row) => makeCuratedPlayer(profile, row)))
+    : ROLE_PLAN.map((position, index) => makePlayer(profile, position, index));
 
   return {
     code: profile.code,
