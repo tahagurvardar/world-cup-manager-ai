@@ -140,6 +140,9 @@ export default function DashboardPage() {
         </StatCard>
       </div>
 
+      {/* Board expectations */}
+      {dashboard.boardExpectation ? <BoardExpectationsCard board={dashboard.boardExpectation} /> : null}
+
       {/* Tactical + Next match */}
       <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
         <Panel className="p-5">
@@ -426,6 +429,73 @@ function getManagerCareer(career = {}) {
 }
 
 /* ---------- small presentational components ---------- */
+
+function evaluationTone(status) {
+  switch (status) {
+    case "Exceeded Expectations":
+      return "border-pitch-300/30 bg-pitch-400/12 text-pitch-100";
+    case "Met Expectations":
+      return "border-sky-300/30 bg-sky-400/12 text-sky-100";
+    case "Below Expectations":
+      return "border-amber-300/30 bg-amber-400/12 text-amber-100";
+    case "Failed Expectations":
+      return "border-red-400/30 bg-red-500/12 text-red-100";
+    default:
+      return "border-white/15 bg-white/[0.05] text-slate-200";
+  }
+}
+
+function jobSecurityTone(status) {
+  if (status === "Secure") return "green";
+  if (status === "Stable") return "blue";
+  if (status === "Under Pressure") return "amber";
+  return "red";
+}
+
+function BoardExpectationsCard({ board }) {
+  const status = board.evaluationStatus || "Pending";
+  return (
+    <Panel className="p-5">
+      <SectionHeader
+        icon={Target}
+        title="Board Expectations"
+        subtitle={`${board.importance || "Standard"} importance · ${board.pressureLevel || "Medium"} pressure`}
+        action={<span className={`chip ${evaluationTone(status)}`}>{status}</span>}
+      />
+      <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-xl border border-pitch-300/20 bg-pitch-400/[0.06] p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-pitch-200">Season Target</p>
+          <p className="mt-1 text-lg font-bold leading-6 text-white">{board.targetLabel || "Compete"}</p>
+          <p className="mt-1 text-xs text-slate-400">Fans: {board.fanExpectation || "Hoping for a strong run"}</p>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Current Stage</p>
+          <p className="mt-1 text-lg font-bold leading-6 text-white">{board.currentStage || "Awaiting kickoff"}</p>
+          {board.lastEvaluationStatus ? (
+            <p className="mt-1 text-xs text-slate-400">Last verdict: {board.lastEvaluationStatus}</p>
+          ) : null}
+        </div>
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Board Confidence</p>
+          <p className="mt-1 text-3xl font-black text-white">{board.boardConfidence ?? "—"}%</p>
+          <div className="mt-2">
+            <ProgressBar value={board.boardConfidence} tone="blue" showValue={false} label="" />
+          </div>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+          <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+            <ShieldCheck size={13} /> Job Security
+          </p>
+          <p className="mt-1 text-3xl font-black text-white">{board.jobSecurity ?? "—"}%</p>
+          <div className="mt-2">
+            <ProgressBar value={board.jobSecurity} tone={jobSecurityTone(board.jobSecurityStatus)} showValue={false} label="" />
+          </div>
+          <p className="mt-1 text-xs text-slate-400">{board.jobSecurityStatus || "Stable"}</p>
+        </div>
+      </div>
+    </Panel>
+  );
+}
 
 function SectionHeader({ icon: Icon, title, subtitle, action }) {
   return (

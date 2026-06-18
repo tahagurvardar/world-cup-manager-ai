@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BarChart3, CircleUserRound, Medal, Mic, Percent, Shield, Sparkles, Swords, Trophy } from "lucide-react";
+import { BarChart3, CircleUserRound, Medal, Mic, Percent, Shield, Sparkles, Swords, Target, Trophy } from "lucide-react";
 import Flag from "../components/Flag.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import Panel from "../components/Panel.jsx";
@@ -14,6 +14,7 @@ export default function ProfilePage() {
   const career = getManagerCareer(dashboard?.managerCareer);
   const history = dashboard?.tournamentHistory || [];
   const achievements = dashboard?.achievements || [];
+  const board = getBoardSummary(dashboard);
 
   useEffect(() => {
     let isMounted = true;
@@ -79,7 +80,7 @@ export default function ProfilePage() {
             <Info label="Group" value={dashboard?.selectedTeam?.group || "TBD"} />
             <Info label="Overall" value={dashboard?.selectedTeam?.overall || "TBD"} />
             <Info label="Tournament progress" value={dashboard?.tournamentProgress || dashboard?.managerCareer?.currentTournamentFinish || "TBD"} />
-            <Info label="Target" value="Lift the trophy" icon={Trophy} />
+            <Info label="Board Target" value={dashboard?.boardExpectation?.targetLabel || "Lift the trophy"} icon={Trophy} />
           </div>
         </Panel>
 
@@ -113,6 +114,43 @@ export default function ProfilePage() {
           </div>
         </Panel>
       </div>
+
+      <Panel className="mt-6 p-5">
+        <div className="mb-5 flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-md bg-pitch-400/12 text-pitch-200">
+            <Target size={20} />
+          </span>
+          <div>
+            <h2 className="text-lg font-semibold text-white">Board & Career Evaluation</h2>
+            <p className="text-sm text-slate-400">Current board target, job security, and how the board rated your campaigns.</p>
+          </div>
+        </div>
+
+        <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+          <Info label="Current Board Target" value={dashboard?.boardExpectation?.targetLabel || "No active target"} />
+          <Info label="Board Confidence" value={board.boardConfidence != null ? `${board.boardConfidence}%` : "—"} />
+          <Info label="Job Security" value={`${board.jobSecurity}% · ${board.jobSecurityStatus}`} icon={Shield} />
+          <Info label="Best Evaluation" value={formatEvaluation(dashboard?.bestEvaluation)} />
+        </div>
+
+        <div className="mt-5 border-t border-white/10 pt-5">
+          <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-pitch-200">
+            <Medal size={14} /> Last Board Evaluation
+          </p>
+          {dashboard?.lastEvaluation ? (
+            <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+              <Info label="Verdict" value={dashboard.lastEvaluation.status} />
+              <Info label="Team" value={dashboard.lastEvaluation.teamName || "—"} />
+              <Info label="Target" value={dashboard.lastEvaluation.targetLabel || "—"} />
+              <Info label="Result" value={dashboard.lastEvaluation.achievedLabel || "—"} />
+            </div>
+          ) : (
+            <p className="rounded-md border border-white/10 bg-white/[0.04] p-4 text-sm text-slate-400">
+              No completed evaluation yet. Finish a tournament to receive the board&apos;s verdict.
+            </p>
+          )}
+        </div>
+      </Panel>
 
       <Panel className="mt-6 p-5">
         <div className="mb-5 flex items-center gap-3">
@@ -196,6 +234,21 @@ function getManagerCareer(career = {}) {
     positiveMediaReactions: career.positiveMediaReactions || 0,
     negativeMediaReactions: career.negativeMediaReactions || 0,
   };
+}
+
+function getBoardSummary(dashboard) {
+  const jobSecurity = dashboard?.jobSecurity ?? dashboard?.boardExpectation?.jobSecurity ?? 70;
+  return {
+    boardConfidence: dashboard?.boardExpectation?.boardConfidence ?? null,
+    jobSecurity,
+    jobSecurityStatus: dashboard?.jobSecurityStatus ?? dashboard?.boardExpectation?.jobSecurityStatus ?? "Stable",
+  };
+}
+
+function formatEvaluation(evaluation) {
+  if (!evaluation || !evaluation.status) return "No evaluation yet";
+  const context = [evaluation.teamName, evaluation.year].filter(Boolean).join(", ");
+  return context ? `${evaluation.status} (${context})` : evaluation.status;
 }
 
 function AchievementCard({ achievement }) {

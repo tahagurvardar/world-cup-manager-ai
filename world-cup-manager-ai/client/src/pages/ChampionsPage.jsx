@@ -51,6 +51,7 @@ export default function ChampionsPage() {
   const career = getCareer(payload.dashboard?.managerCareer);
   const achievements = payload.dashboard?.achievements || payload.tournament?.achievements || [];
   const latestAchievement = payload.dashboard?.latestAchievement || achievements[achievements.length - 1] || null;
+  const boardEvaluation = payload.dashboard?.lastEvaluation || payload.tournament?.lastEvaluation || null;
 
   if (loading) return <LoadingState label="Preparing trophy celebration..." />;
 
@@ -139,6 +140,25 @@ export default function ChampionsPage() {
         </div>
       </Panel>
 
+      {boardEvaluation ? (
+        <Panel className="p-5">
+          <SectionTitle icon={Medal} title="Board Evaluation" />
+          <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1.4fr]">
+            <div className={`rounded-2xl border p-5 ${evaluationTone(boardEvaluation.status)}`}>
+              <p className="text-xs font-bold uppercase tracking-[0.22em] opacity-80">Board Verdict</p>
+              <p className="mt-2 text-3xl font-black leading-tight">{boardEvaluation.status}</p>
+              <p className="mt-2 text-sm opacity-90">{boardEvaluation.teamName ? `${boardEvaluation.teamName} · ${boardEvaluation.year || 2026}` : null}</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Stat label="Board Target" value={boardEvaluation.targetLabel || "—"} />
+              <Stat label="Achieved" value={boardEvaluation.achievedLabel || "—"} />
+              <Stat label="Job Security" value={boardEvaluation.jobSecurity != null ? `${boardEvaluation.jobSecurity}% · ${boardEvaluation.jobSecurityStatus || ""}` : "—"} />
+              <Stat label="Reputation Change" value={formatDelta(boardEvaluation.reputationChange)} />
+            </div>
+          </div>
+        </Panel>
+      ) : null}
+
       <Panel className="p-5">
         <SectionTitle icon={ShieldCheck} title="Manager Legacy" />
         <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -225,6 +245,27 @@ function Stat({ label, value, detail }) {
       {detail ? <p className="mt-1 text-xs leading-5 text-slate-400">{detail}</p> : null}
     </div>
   );
+}
+
+function evaluationTone(status) {
+  switch (status) {
+    case "Exceeded Expectations":
+      return "border-pitch-300/30 bg-pitch-400/12 text-pitch-50";
+    case "Met Expectations":
+      return "border-sky-300/30 bg-sky-400/12 text-sky-50";
+    case "Below Expectations":
+      return "border-amber-300/30 bg-amber-400/12 text-amber-50";
+    case "Failed Expectations":
+      return "border-red-400/30 bg-red-500/12 text-red-50";
+    default:
+      return "border-white/15 bg-white/[0.05] text-slate-100";
+  }
+}
+
+function formatDelta(value) {
+  if (value == null) return "—";
+  if (value > 0) return `+${value}`;
+  return `${value}`;
 }
 
 function getCareer(career = {}) {

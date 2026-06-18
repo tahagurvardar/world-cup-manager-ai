@@ -5,11 +5,21 @@ import { generateMatchReport, generateNewsHeadline, generateTacticalAdvice } fro
 import {
   archiveCompletedTournament,
   applyManagerMatchResult,
+  getSelectedTeamFinish,
   normalizeManagerCareer,
   normalizeAchievements,
   normalizeTournamentHistory,
   updateCurrentTournamentFinish,
 } from "../services/managerCareerService.js";
+import {
+  buildBoardExpectationView,
+  buildEvaluationNews,
+  buildExpectationAnnouncementNews,
+  evaluateBoardExpectations,
+  generateBoardExpectations,
+  getJobSecurityStatus,
+  normalizeJobSecurity,
+} from "../services/boardExpectationService.js";
 import { buildTournamentAwards, buildTournamentPlayerStats } from "../services/playerStatsService.js";
 import { buildPlayerProfile } from "../services/playerProfileService.js";
 import {
@@ -259,6 +269,14 @@ function buildTournamentPayload(state) {
   const managerCareer = state.selectedTeamCode
     ? updateCurrentTournamentFinish(state.managerCareer, tournament, state.selectedTeamCode)
     : { ...normalizeManagerCareer(state.managerCareer), currentTournamentFinish: "Awaiting team selection" };
+  const selectedTeam = state.selectedTeamCode ? findTeamByCode(state.selectedTeamCode) : null;
+  const boardExpectation = selectedTeam
+    ? buildBoardExpectationView(state.boardExpectations || generateBoardExpectations(selectedTeam), {
+        currentStage: tournament.selectedTeamStatus?.qualificationStatus || tournament.currentStage,
+        jobSecurity: state.jobSecurity,
+        lastEvaluation: state.lastEvaluation,
+      })
+    : null;
 
   return {
     ...tournament,
@@ -267,6 +285,8 @@ function buildTournamentPayload(state) {
     managerCareer,
     achievements: normalizeAchievements(state.achievements),
     tournamentHistory: normalizeTournamentHistory(state.tournamentHistory),
+    boardExpectation,
+    ...boardCareerFields(state),
   };
 }
 
@@ -361,7 +381,51 @@ function archiveTournamentIfComplete(state, tournamentAfter, awards, selectedTea
   state.markModified("tournamentHistory");
   state.markModified("achievements");
 
-  return buildTournamentCompletionNews(tournamentAfter, awards, selectedTeam.code);
+  const evaluationNews = evaluateBoardExpectationsForTournament(state, tournamentAfter, selectedTeam);
+
+  return [...buildTournamentCompletionNews(tournamentAfter, awards, selectedTeam.code), ...evaluationNews];
+}
+
+// Runs the board evaluation exactly once when a tournament is archived: compares the
+// manager team's finish with the board target, then applies the resulting deltas to
+// reputation, job security, board confidence (on the expectation) and fan confidence
+// (on the existing media metric). Returns the evaluation headline news.
+function evaluateBoardExpectationsForTournament(state, tournamentAfter, selectedTeam) {
+  const finish = getSelectedTeamFinish(tournamentAfter, selectedTeam.code);
+  const result = evaluateBoardExpectations({
+    expectations: state.boardExpectations,
+    finish,
+    selectedTeam,
+    jobSecurity: state.jobSecurity,
+    bestEvaluation: state.bestEvaluation,
+    history: state.evaluationHistory,
+  });
+
+  const career = normalizeManagerCareer(state.managerCareer);
+  career.reputation = Math.max(0, Math.min(100, career.reputation + result.reputationChange));
+  state.managerCareer = normalizeManagerCareer(career);
+  state.boardExpectations = result.expectations;
+  state.lastEvaluation = result.evaluation;
+  state.bestEvaluation = result.bestEvaluation;
+  state.evaluationHistory = result.history;
+  state.jobSecurity = result.jobSecurity;
+  state.markModified("managerCareer");
+  state.markModified("boardExpectations");
+  state.markModified("lastEvaluation");
+  state.markModified("bestEvaluation");
+  state.markModified("evaluationHistory");
+
+  // Reflect the fan-confidence career effect on the existing media metric when present.
+  if (state.media && typeof state.media === "object") {
+    const media = normalizeMedia(state.media);
+    media.previous = { fanConfidence: media.fanConfidence, mediaPressure: media.mediaPressure, boardConfidence: media.boardConfidence };
+    media.fanConfidence = Math.max(0, Math.min(100, media.fanConfidence + result.fanConfidenceChange));
+    state.media = media;
+    state.markModified("media");
+  }
+
+  const news = buildEvaluationNews(selectedTeam, result.evaluation);
+  return news ? [news] : [];
 }
 
 async function ensureCompletedTournamentArchived(state) {
@@ -571,6 +635,17 @@ function buildKnockoutNews(matches, managerMatch, featuredReport, tournamentAfte
   return news;
 }
 
+// Career-level board fields shared by every dashboard/tournament payload.
+function boardCareerFields(state) {
+  const jobSecurity = normalizeJobSecurity(state.jobSecurity);
+  return {
+    lastEvaluation: state.lastEvaluation || null,
+    bestEvaluation: state.bestEvaluation || null,
+    jobSecurity,
+    jobSecurityStatus: getJobSecurityStatus(jobSecurity),
+  };
+}
+
 function buildDashboardPayload(state) {
   const selectedTeam = state.selectedTeamCode ? findTeamByCode(state.selectedTeamCode) : null;
   const baseCareer = normalizeManagerCareer(state.managerCareer);
@@ -598,6 +673,8 @@ function buildDashboardPayload(state) {
       latestAchievement,
       lastTournamentWon,
       tournamentHistory,
+      boardExpectation: null,
+      ...boardCareerFields(state),
     };
   }
 
@@ -615,6 +692,11 @@ function buildDashboardPayload(state) {
   const opponent = nextFixture ? getOpponent(nextFixture, selectedTeam.code) : null;
   const tournament = buildTournamentSnapshot(selectedTeam.code, state.results);
   const managerCareer = updateCurrentTournamentFinish(state.managerCareer, tournament, selectedTeam.code);
+  const boardExpectation = buildBoardExpectationView(state.boardExpectations || generateBoardExpectations(selectedTeam), {
+    currentStage: tournament.selectedTeamStatus?.qualificationStatus || tournament.currentStage,
+    jobSecurity: state.jobSecurity,
+    lastEvaluation: state.lastEvaluation,
+  });
   const aiAdvice = opponent
     ? generateTacticalAdvice(selectedTeam, opponent, tactics)
     : {
@@ -657,6 +739,8 @@ function buildDashboardPayload(state) {
     latestAchievement,
     lastTournamentWon,
     tournamentHistory,
+    boardExpectation,
+    ...boardCareerFields(state),
     canSimulate: Boolean(tournament.nextGlobalMatchday || tournament.nextKnockoutRound),
     nextKnockoutRound: tournament.nextKnockoutRound
       ? {
@@ -717,6 +801,18 @@ export async function selectTeam(req, res) {
   state.currentTournamentArchived = false;
   state.currentStage = "group";
   state.markModified("managerCareer");
+
+  // Fresh board target for the new campaign; career evaluation history (lastEvaluation,
+  // bestEvaluation, evaluationHistory) and job security carry over.
+  const expectations = generateBoardExpectations(team);
+  state.boardExpectations = expectations;
+  state.jobSecurity = normalizeJobSecurity(state.jobSecurity);
+  state.markModified("boardExpectations");
+  const announcement = buildExpectationAnnouncementNews(team, expectations);
+  if (announcement) {
+    state.news.push(announcement);
+    state.markModified("news");
+  }
   await state.save();
 
   return res.json({
@@ -754,6 +850,11 @@ export async function startNewTournament(req, res) {
   state.currentTournamentArchived = false;
   state.currentStage = "group";
   state.markModified("managerCareer");
+
+  // Current target clears until a team is chosen; evaluation history + job security persist.
+  state.boardExpectations = null;
+  state.jobSecurity = normalizeJobSecurity(state.jobSecurity);
+  state.markModified("boardExpectations");
   await state.save();
 
   return res.json({
